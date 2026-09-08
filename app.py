@@ -4,7 +4,7 @@ import streamlit as st
 
 # ضبط إعدادات الصفحة
 st.set_page_config(
-    page_title="نظام إدارة المطبعة", page_icon="🖨️", layout="wide"
+    page_title="Zero printer", page_icon="🖨️", layout="wide"
 )
 
 
