@@ -673,10 +673,6 @@ with st.sidebar:
     # Small preview of today's note
     today_note = get_today_note()
 
-    st.markdown(
-        '<div class="side-label">ملاحظة اليوم</div>',
-        unsafe_allow_html=True
-    )
 
     if today_note:
         preview = today_note[:150]
