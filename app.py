@@ -801,9 +801,8 @@ if choice == "➕  تسجيل طلب جديد":
             )
 
         with col3:
-            st.markdown(
-                unsafe_allow_html=True
-            )
+            
+
 
             total_cost = st.number_input(
                 "التكلفة الإجمالية (جنيه)",
