@@ -106,10 +106,10 @@ def set_custom_design():
             content: "";
             position: fixed;
             inset: 0;
-            background-image: url("zero.jpg");
+            background-image: url("data:image/jpeg;base64,{logo_b64}");
             background-repeat: repeat;
             background-position: 80% 70%;
-            background-size: min(900px, 90vw);
+            background-size: min(1000px, 100vw);
             opacity: 0.077;
             filter: grayscale(15%) contrast(95%);
             pointer-events: none;
