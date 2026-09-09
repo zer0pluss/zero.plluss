@@ -781,9 +781,6 @@ if choice == "➕  تسجيل طلب جديد":
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            st.markdown(
-                unsafe_allow_html=True
-            )
 
             customer_name = st.text_input(
                 "اسم العميل *",
@@ -796,10 +793,9 @@ if choice == "➕  تسجيل طلب جديد":
             )
 
         with col2:
-            st.markdown(
-                unsafe_allow_html=True
-            )
 
+            )
+            
             order_details = st.text_area(
                 "تفاصيل الطلب *",
                 placeholder="مثال: 500 فلاير — مقاس A5 — وجهين — ألوان...",
@@ -813,8 +809,8 @@ if choice == "➕  تسجيل طلب جديد":
 
             total_cost = st.number_input(
                 "التكلفة الإجمالية (جنيه)",
-                min_value=0,
-                step=0,
+                min_value=0.0,
+                step=10.0,
                 format="%.2f"
             )
 
