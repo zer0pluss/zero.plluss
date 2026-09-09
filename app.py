@@ -1,5 +1,7 @@
 import base64
 import sqlite3
+from datetime import date, datetime
+
 import pandas as pd
 import streamlit as st
 
@@ -17,33 +19,36 @@ st.set_page_config(
 
 
 # =========================================================
-# LOGO
+# FILES
+# Put zero.jpg beside this Python file
 # =========================================================
 
 LOGO_PATH = "zero.jpg"
 
 
-def get_logo_base64():
+def image_base64(path):
     try:
-        with open(LOGO_PATH, "rb") as f:
-            return base64.b64encode(f.read()).decode()
-    except:
+        with open(path, "rb") as file:
+            return base64.b64encode(file.read()).decode("utf-8")
+    except FileNotFoundError:
         return ""
 
 
-logo_base64 = get_logo_base64()
+logo_b64 = image_base64(LOGO_PATH)
 
 
 # =========================================================
 # DATABASE
 # =========================================================
 
+DB_NAME = "print_shop.db"
+
+
 def get_connection():
-    return sqlite3.connect("print_shop.db")
+    return sqlite3.connect(DB_NAME)
 
 
 def init_db():
-
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -66,7 +71,17 @@ def init_db():
             payment_status TEXT,
             order_status TEXT,
             FOREIGN KEY (customer_id)
-            REFERENCES customers(customer_id)
+                REFERENCES customers(customer_id)
+        )
+    """)
+
+    # Daily notes / notebook
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS daily_notes (
+            note_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            note_date DATE NOT NULL UNIQUE,
+            note_text TEXT DEFAULT '',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
 
@@ -78,392 +93,447 @@ init_db()
 
 
 # =========================================================
-# CUSTOM CSS
+# CSS / PREMIUM DESIGN
 # =========================================================
 
 def set_custom_design():
 
+    background_css = ""
+
+    if logo_b64:
+        background_css = f"""
+        .stApp::before {{
+            content: "";
+            position: fixed;
+            inset: 0;
+            background-image: url("data:image/jpeg;base64,{logo_b64}");
+            background-repeat: no-repeat;
+            background-position: 54% 48%;
+            background-size: min(780px, 65vw);
+            opacity: 0.055;
+            filter: grayscale(15%) contrast(90%);
+            pointer-events: none;
+            z-index: 0;
+        }}
+        """
+
     st.markdown(
         f"""
-        <style>
-
-        /* =====================================================
-           GLOBAL
-        ===================================================== */
-
-        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap');
-
-        * {{
-            font-family: 'Cairo', 'Segoe UI', sans-serif !important;
-        }}
-
-        html, body, [class*="css"] {{
-            direction: rtl;
-        }}
-
-        .stApp {{
-            background:
-                linear-gradient(
-                    rgba(5, 10, 20, 0.94),
-                    rgba(5, 10, 20, 0.97)
-                ),
-                url("data:image/jpeg;base64,{logo_base64}");
-
-            background-size: 850px;
-            background-repeat: no-repeat;
-            background-position: 42% 48%;
-            background-attachment: fixed;
-
-            color: #f8fafc;
-        }}
-
-
-        /* =====================================================
-           REMOVE STREAMLIT DEFAULTS
-        ===================================================== */
-
-        #MainMenu {{
-            visibility: hidden;
-        }}
-
-        footer {{
-            visibility: hidden;
-        }}
-
-        header {{
-            background: transparent !important;
-        }}
-
-        .block-container {{
-            padding-top: 1.5rem;
-            padding-bottom: 2rem;
-            max-width: 1500px;
-        }}
-
-
-        /* =====================================================
-           SIDEBAR
-        ===================================================== */
-
-        section[data-testid="stSidebar"] {{
-            background:
-                linear-gradient(
-                    180deg,
-                    rgba(8,15,30,0.98),
-                    rgba(5,10,20,0.99)
-                ) !important;
-
-            border-left: 2px solid #e21b2b;
-            box-shadow: -10px 0 40px rgba(0,0,0,.35);
-        }}
-
-        section[data-testid="stSidebar"] > div {{
-            padding-top: 1.5rem;
-        }}
-
-        section[data-testid="stSidebar"] * {{
-            color: #f8fafc !important;
-        }}
-
-
-        /* =====================================================
-           LOGO SIDEBAR
-        ===================================================== */
-
-        .sidebar-logo {{
-            text-align: center;
-            padding: 10px 10px 25px;
-        }}
-
-        .sidebar-logo img {{
-            width: 145px;
-            height: 145px;
-            object-fit: cover;
-            border-radius: 20px;
-            border: 1px solid rgba(255,255,255,.12);
-            box-shadow:
-                0 15px 40px rgba(0,0,0,.5),
-                0 0 30px rgba(226,27,43,.15);
-        }}
-
-        .brand-title {{
-            font-size: 23px;
-            font-weight: 800;
-            margin-top: 12px;
-        }}
-
-        .brand-subtitle {{
-            color: #94a3b8;
-            font-size: 13px;
-        }}
-
-
-        /* =====================================================
-           SIDEBAR SELECTBOX
-        ===================================================== */
-
-        section[data-testid="stSidebar"]
-        div[data-baseweb="select"] > div {{
-            background: #111c31 !important;
-            border: 1px solid #27364f !important;
-            border-radius: 12px !important;
-        }}
-
-
-        /* =====================================================
-           MAIN HEADER
-        ===================================================== */
-
-        .top-header {{
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-
-            padding: 18px 25px;
-            margin-bottom: 22px;
-
-            border: 1px solid rgba(148,163,184,.15);
-            border-radius: 18px;
-
-            background:
-                linear-gradient(
-                    135deg,
-                    rgba(17,28,49,.85),
-                    rgba(8,15,30,.70)
-                );
-
-            backdrop-filter: blur(18px);
-
-            box-shadow:
-                0 20px 50px rgba(0,0,0,.25);
-        }}
-
-        .header-title {{
-            font-size: 27px;
-            font-weight: 800;
-            color: white;
-        }}
-
-        .header-subtitle {{
-            color: #94a3b8;
-            font-size: 13px;
-        }}
-
-        .header-badge {{
-            background: rgba(226,27,43,.12);
-            border: 1px solid rgba(226,27,43,.35);
-            padding: 9px 16px;
-            border-radius: 50px;
-            color: #ff4b5c;
-            font-size: 13px;
-        }}
-
-
-        /* =====================================================
-           SECTION CARDS
-        ===================================================== */
-
-        .glass-card {{
-            background:
-                linear-gradient(
-                    135deg,
-                    rgba(20,32,53,.88),
-                    rgba(8,15,28,.80)
-                );
-
-            border: 1px solid rgba(100,116,139,.22);
-            border-radius: 20px;
-
-            padding: 25px;
-
-            margin-bottom: 22px;
-
-            box-shadow:
-                0 20px 60px rgba(0,0,0,.25),
-                inset 0 1px 0 rgba(255,255,255,.03);
-
-            backdrop-filter: blur(18px);
-        }}
-
-        .section-title {{
-            font-size: 21px;
-            font-weight: 800;
-            color: #f8fafc;
-        }}
-
-        .section-subtitle {{
-            color: #64748b;
-            font-size: 12px;
-            margin-top: 2px;
-        }}
-
-
-        /* =====================================================
-           STAT CARDS
-        ===================================================== */
-
-        .stat-card {{
-            background:
-                linear-gradient(
-                    135deg,
-                    rgba(20,32,53,.95),
-                    rgba(10,18,32,.9)
-                );
-
-            border: 1px solid rgba(71,85,105,.3);
-            border-radius: 17px;
-
-            padding: 20px;
-
-            position: relative;
-            overflow: hidden;
-
-            box-shadow: 0 15px 40px rgba(0,0,0,.22);
-        }}
-
-        .stat-card:before {{
-            content: "";
-            position: absolute;
-            top: 0;
-            right: 0;
-            width: 4px;
-            height: 100%;
-            background: #e21b2b;
-        }}
-
-        .stat-icon {{
-            font-size: 25px;
-        }}
-
-        .stat-title {{
-            color: #94a3b8;
-            font-size: 13px;
-            margin-top: 8px;
-        }}
-
-        .stat-value {{
-            color: white;
-            font-size: 27px;
-            font-weight: 800;
-            margin-top: 4px;
-        }}
-
-
-        /* =====================================================
-           INPUTS
-        ===================================================== */
-
-        div[data-baseweb="input"],
-        div[data-baseweb="textarea"],
-        div[data-baseweb="select"] > div {{
-            background: #101b2f !important;
-            border: 1px solid #293a56 !important;
-            border-radius: 11px !important;
-        }}
-
-        input,
-        textarea {{
-            color: #f8fafc !important;
-        }}
-
-        input::placeholder,
-        textarea::placeholder {{
-            color: #64748b !important;
-        }}
-
-        label {{
-            color: #cbd5e1 !important;
-            font-weight: 600 !important;
-        }}
-
-
-        /* =====================================================
-           BUTTONS
-        ===================================================== */
-
-        .stButton > button,
-        .stFormSubmitButton > button {{
-            width: 100%;
-
-            border: none !important;
-            border-radius: 11px !important;
-
-            padding: 12px 20px !important;
-
-            background:
-                linear-gradient(
-                    135deg,
-                    #ff2436,
-                    #c91425
-                ) !important;
-
-            color: white !important;
-
-            font-weight: 800 !important;
-
-            box-shadow:
-                0 8px 25px rgba(226,27,43,.25);
-
-            transition: all .25s ease;
-        }}
-
-        .stButton > button:hover,
-        .stFormSubmitButton > button:hover {{
-            transform: translateY(-2px);
-
-            box-shadow:
-                0 12px 35px rgba(226,27,43,.4);
-        }}
-
-
-        /* =====================================================
-           TABLE
-        ===================================================== */
-
-        [data-testid="stDataFrame"] {{
-            border-radius: 15px;
-            overflow: hidden;
-            border: 1px solid #26364f;
-        }}
-
-
-        /* =====================================================
-           ALERTS
-        ===================================================== */
-
-        div[data-testid="stAlert"] {{
-            border-radius: 12px;
-            border: 1px solid rgba(255,255,255,.08);
-        }}
-
-
-        /* =====================================================
-           DIVIDER
-        ===================================================== */
-
-        hr {{
-            border-color: rgba(148,163,184,.12) !important;
-        }}
-
-
-        /* =====================================================
-           FOOTER
-        ===================================================== */
-
-        .footer {{
-            text-align: center;
-            color: #475569;
-            font-size: 11px;
-            margin-top: 35px;
-            padding: 20px;
-        }}
-
-        .footer span {{
-            color: #e21b2b;
-            font-weight: bold;
-        }}
-
-        </style>
+<style>
+
+/* =========================================================
+   CORE
+   ========================================================= */
+
+html, body, [class*="css"] {{
+    direction: rtl;
+}}
+
+.stApp {{
+    background:
+        radial-gradient(circle at 15% 15%, rgba(226,27,43,.10), transparent 28%),
+        radial-gradient(circle at 85% 80%, rgba(55,75,110,.12), transparent 32%),
+        linear-gradient(135deg, #060a12 0%, #0a111d 48%, #060a12 100%);
+    color: #eef2f7;
+}}
+
+{background_css}
+
+.main .block-container {{
+    position: relative;
+    z-index: 1;
+    max-width: 1550px;
+    padding-top: 1.2rem;
+    padding-bottom: 2.5rem;
+}}
+
+#MainMenu,
+footer {{
+    visibility: hidden;
+}}
+
+header {{
+    background: transparent !important;
+}}
+
+
+/* =========================================================
+   ANIMATIONS
+   ========================================================= */
+
+@keyframes fadeUp {{
+    from {{
+        opacity: 0;
+        transform: translateY(18px);
+    }}
+    to {{
+        opacity: 1;
+        transform: translateY(0);
+    }}
+}}
+
+@keyframes pulseRed {{
+    0%, 100% {{
+        box-shadow: 0 0 0 0 rgba(226,27,43,.20);
+    }}
+    50% {{
+        box-shadow: 0 0 0 8px rgba(226,27,43,0);
+    }}
+}}
+
+@keyframes shimmer {{
+    0% {{ background-position: -500px 0; }}
+    100% {{ background-position: 500px 0; }}
+}}
+
+.fade-up {{
+    animation: fadeUp .55s ease both;
+}}
+
+.fade-up-2 {{
+    animation: fadeUp .70s ease both;
+}}
+
+.fade-up-3 {{
+    animation: fadeUp .85s ease both;
+}}
+
+
+/* =========================================================
+   SIDEBAR
+   ========================================================= */
+
+section[data-testid="stSidebar"] {{
+    background:
+        linear-gradient(180deg, #070c15 0%, #0a101b 55%, #060a12 100%)
+        !important;
+    border-left: 1px solid rgba(226,27,43,.65);
+    box-shadow: -15px 0 45px rgba(0,0,0,.35);
+}}
+
+section[data-testid="stSidebar"] > div {{
+    padding: 1rem .85rem 1.5rem;
+}}
+
+section[data-testid="stSidebar"] * {{
+    color: #f1f5f9 !important;
+}}
+
+.brand-box {{
+    text-align: center;
+    padding: 8px 4px 16px;
+}}
+
+.brand-logo {{
+    width: 120px;
+    height: 120px;
+    object-fit: cover;
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,.13);
+    box-shadow: 0 18px 45px rgba(0,0,0,.45);
+    animation: fadeUp .6s ease both;
+}}
+
+.brand-name {{
+    font-size: 21px;
+    font-weight: 800;
+    margin-top: 11px;
+    letter-spacing: .3px;
+}}
+
+.brand-caption {{
+    color: #7f8da3 !important;
+    font-size: 11px;
+    margin-top: 2px;
+}}
+
+.side-label {{
+    color: #69778b !important;
+    font-size: 10px;
+    margin: 13px 3px 7px;
+    letter-spacing: .4px;
+}}
+
+.side-note {{
+    background: linear-gradient(145deg, rgba(20,30,48,.94), rgba(9,15,26,.94));
+    border: 1px solid rgba(148,163,184,.13);
+    border-radius: 14px;
+    padding: 13px;
+    margin-top: 12px;
+}}
+
+.side-note-title {{
+    font-weight: 800;
+    font-size: 13px;
+    color: #f8fafc !important;
+}}
+
+.side-note-date {{
+    font-size: 10px;
+    color: #7f8da3 !important;
+    margin-top: 3px;
+}}
+
+.side-note-text {{
+    margin-top: 8px;
+    font-size: 11px;
+    line-height: 1.8;
+    color: #b9c3d1 !important;
+    white-space: pre-wrap;
+}}
+
+
+/* =========================================================
+   HEADER
+   ========================================================= */
+
+.hero {{
+    background:
+        linear-gradient(110deg, rgba(18,28,45,.92), rgba(8,14,25,.82));
+    border: 1px solid rgba(148,163,184,.14);
+    border-radius: 20px;
+    padding: 20px 24px;
+    margin-bottom: 18px;
+    position: relative;
+    overflow: hidden;
+    animation: fadeUp .45s ease both;
+}}
+
+.hero::after {{
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 4px;
+    height: 100%;
+    background: linear-gradient(#ff2639, #a90e1e);
+    animation: pulseRed 2.2s infinite;
+}}
+
+.hero-title {{
+    font-size: 28px;
+    font-weight: 800;
+    color: #ffffff;
+}}
+
+.hero-sub {{
+    color: #8492a6;
+    font-size: 12px;
+    margin-top: 3px;
+}}
+
+.online {{
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    background: rgba(34,197,94,.08);
+    border: 1px solid rgba(34,197,94,.20);
+    color: #86efac;
+    border-radius: 30px;
+    padding: 7px 12px;
+    font-size: 11px;
+}}
+
+.online-dot {{
+    width: 7px;
+    height: 7px;
+    background: #22c55e;
+    border-radius: 50%;
+    box-shadow: 0 0 10px #22c55e;
+}}
+
+
+/* =========================================================
+   STAT CARDS
+   ========================================================= */
+
+.stat-card {{
+    background:
+        linear-gradient(145deg, rgba(20,31,50,.94), rgba(9,15,26,.92));
+    border: 1px solid rgba(148,163,184,.12);
+    border-radius: 17px;
+    padding: 18px 19px;
+    min-height: 118px;
+    position: relative;
+    overflow: hidden;
+    transition: transform .25s ease, border-color .25s ease, box-shadow .25s ease;
+    animation: fadeUp .6s ease both;
+}}
+
+.stat-card:hover {{
+    transform: translateY(-5px);
+    border-color: rgba(226,27,43,.42);
+    box-shadow: 0 16px 35px rgba(0,0,0,.28);
+}}
+
+.stat-card::before {{
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 3px;
+    height: 100%;
+    background: #e21b2b;
+}}
+
+.stat-icon {{
+    font-size: 22px;
+}}
+
+.stat-title {{
+    color: #78869a;
+    font-size: 11px;
+    margin-top: 5px;
+}}
+
+.stat-value {{
+    color: #f8fafc;
+    font-size: 25px;
+    font-weight: 800;
+    margin-top: 1px;
+}}
+
+
+/* =========================================================
+   CARDS
+   ========================================================= */
+
+.panel {{
+    background:
+        linear-gradient(145deg, rgba(17,28,46,.90), rgba(7,13,24,.86));
+    border: 1px solid rgba(148,163,184,.13);
+    border-radius: 19px;
+    padding: 22px;
+    margin-bottom: 18px;
+    box-shadow: 0 18px 50px rgba(0,0,0,.20);
+    animation: fadeUp .65s ease both;
+}}
+
+.panel-title {{
+    font-size: 20px;
+    font-weight: 800;
+    color: #f8fafc;
+}}
+
+.panel-sub {{
+    color: #69788d;
+    font-size: 11px;
+    margin-top: 2px;
+    margin-bottom: 18px;
+}}
+
+.mini-title {{
+    color: #d8dee8;
+    font-size: 14px;
+    font-weight: 800;
+    margin-bottom: 9px;
+}}
+
+
+/* =========================================================
+   INPUTS
+   ========================================================= */
+
+div[data-baseweb="input"] > div,
+div[data-baseweb="textarea"] > div,
+div[data-baseweb="select"] > div {{
+    background: #0d1728 !important;
+    border: 1px solid #26364f !important;
+    border-radius: 10px !important;
+    transition: border-color .2s ease, box-shadow .2s ease;
+}}
+
+div[data-baseweb="input"] > div:focus-within,
+div[data-baseweb="textarea"] > div:focus-within,
+div[data-baseweb="select"] > div:focus-within {{
+    border-color: rgba(226,27,43,.65) !important;
+    box-shadow: 0 0 0 3px rgba(226,27,43,.08);
+}}
+
+input, textarea {{
+    color: #f8fafc !important;
+}}
+
+input::placeholder,
+textarea::placeholder {{
+    color: #536176 !important;
+}}
+
+label {{
+    color: #cbd5e1 !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+}}
+
+
+/* =========================================================
+   BUTTONS
+   ========================================================= */
+
+.stButton > button,
+.stFormSubmitButton > button {{
+    border: 0 !important;
+    border-radius: 10px !important;
+    min-height: 44px;
+    background: linear-gradient(135deg, #f21f33, #bc1021) !important;
+    color: #fff !important;
+    font-weight: 800 !important;
+    transition: transform .2s ease, box-shadow .2s ease, filter .2s ease;
+}}
+
+.stButton > button:hover,
+.stFormSubmitButton > button:hover {{
+    transform: translateY(-2px);
+    filter: brightness(1.08);
+    box-shadow: 0 12px 28px rgba(226,27,43,.28);
+}}
+
+
+/* =========================================================
+   DATAFRAME
+   ========================================================= */
+
+[data-testid="stDataFrame"] {{
+    border: 1px solid rgba(148,163,184,.15);
+    border-radius: 14px;
+    overflow: hidden;
+}}
+
+
+/* =========================================================
+   MESSAGES
+   ========================================================= */
+
+div[data-testid="stAlert"] {{
+    border-radius: 11px;
+}}
+
+
+/* =========================================================
+   DIVIDER
+   ========================================================= */
+
+hr {{
+    border-color: rgba(148,163,184,.10) !important;
+}}
+
+
+/* =========================================================
+   FOOTER
+   ========================================================= */
+
+.footer {{
+    text-align: center;
+    color: #465267;
+    font-size: 10px;
+    padding: 24px 0 4px;
+}}
+
+.footer strong {{
+    color: #e21b2b;
+}}
+
+</style>
         """,
         unsafe_allow_html=True,
     )
@@ -473,48 +543,89 @@ set_custom_design()
 
 
 # =========================================================
-# HELPER FUNCTIONS
+# HELPERS
 # =========================================================
 
 def calculate_payment(total, deposit):
-
-    if deposit >= total and total > 0:
+    if total > 0 and deposit >= total:
         return "تم الدفع بالكامل"
-
-    elif deposit > 0:
-        remaining = total - deposit
-        return f"تم دفع عربون — المتبقي: {remaining:.2f} ج"
-
+    if deposit > 0:
+        return f"تم دفع عربون — المتبقي: {total - deposit:,.2f} ج"
     return "لم يدفع"
 
 
 def get_statistics():
-
     conn = get_connection()
 
-    df = pd.read_sql_query("""
-        SELECT *
-        FROM orders
-    """, conn)
+    df = pd.read_sql_query(
+        "SELECT total_cost, order_status FROM orders",
+        conn
+    )
 
     conn.close()
 
     if df.empty:
         return 0, 0, 0, 0
 
-    total_orders = len(df)
-
-    completed = len(
-        df[df["order_status"] == "تم التسليم"]
+    return (
+        len(df),
+        int((df["order_status"] == "تم التسليم").sum()),
+        int((df["order_status"] == "قيد التنفيذ").sum()),
+        float(df["total_cost"].fillna(0).sum()),
     )
 
-    in_progress = len(
-        df[df["order_status"] == "قيد التنفيذ"]
+
+def get_today_note():
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT note_text FROM daily_notes WHERE note_date = ?",
+        (date.today().isoformat(),)
     )
 
-    total_sales = df["total_cost"].fillna(0).sum()
+    row = cursor.fetchone()
+    conn.close()
 
-    return total_orders, completed, in_progress, total_sales
+    return row[0] if row else ""
+
+
+def save_today_note(note_text):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    today = date.today().isoformat()
+
+    cursor.execute("""
+        INSERT INTO daily_notes (note_date, note_text, updated_at)
+        VALUES (?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(note_date)
+        DO UPDATE SET
+            note_text = excluded.note_text,
+            updated_at = CURRENT_TIMESTAMP
+    """, (today, note_text))
+
+    conn.commit()
+    conn.close()
+
+
+def get_recent_notes(limit=5):
+    conn = get_connection()
+
+    df = pd.read_sql_query(
+        """
+        SELECT note_date, note_text
+        FROM daily_notes
+        WHERE TRIM(note_text) <> ''
+        ORDER BY note_date DESC
+        LIMIT ?
+        """,
+        conn,
+        params=(limit,)
+    )
+
+    conn.close()
+    return df
 
 
 # =========================================================
@@ -523,161 +634,142 @@ def get_statistics():
 
 with st.sidebar:
 
-    if logo_base64:
-
+    if logo_b64:
         st.markdown(
             f"""
-            <div class="sidebar-logo">
-                <img src="data:image/jpeg;base64,{logo_base64}">
-                <div class="brand-title">ZERO Advertising</div>
-                <div class="brand-subtitle">
-                    نظام إدارة المطبعة والإعلانات
+            <div class="brand-box">
+                <img class="brand-logo"
+                     src="data:image/jpeg;base64,{logo_b64}">
+                <div class="brand-name">ZERO Advertising</div>
+                <div class="brand-caption">
+                    PRINT • DESIGN • ADVERTISING
                 </div>
             </div>
             """,
-            unsafe_allow_html=True,
+            unsafe_allow_html=True
         )
 
     st.divider()
 
     st.markdown(
-        """
-        <div style="
-            color:#64748b;
-            font-size:11px;
-            margin-bottom:8px;
-        ">
-        القائمة الرئيسية
-        </div>
-        """,
-        unsafe_allow_html=True,
+        '<div class="side-label">القائمة الرئيسية</div>',
+        unsafe_allow_html=True
     )
 
     menu = [
         "➕  تسجيل طلب جديد",
-        "📋  الطلبات المسجلة",
+        "📋  عرض واستعلام الطلبات",
         "⚙️  تحديث حالة طلب",
+        "📝  المفكرة اليومية",
     ]
 
     choice = st.selectbox(
-        "اختر القسم",
+        "القائمة",
         menu,
-        label_visibility="collapsed",
+        label_visibility="collapsed"
     )
 
     st.divider()
 
+    # Small preview of today's note
+    today_note = get_today_note()
+
     st.markdown(
-        """
-        <div style="
-            background:#101b2f;
-            border:1px solid #26364f;
-            padding:15px;
-            border-radius:14px;
-            text-align:center;
-        ">
-            <div style="font-size:12px;color:#64748b;">
-                ZERO PRINTING SYSTEM
-            </div>
-            <div style="
-                color:#e21b2b;
-                font-weight:800;
-                margin-top:5px;
-            ">
-                Management v2.0
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+        '<div class="side-label">ملاحظة اليوم</div>',
+        unsafe_allow_html=True
     )
 
+    if today_note:
+        preview = today_note[:150]
+        if len(today_note) > 150:
+            preview += "..."
+
+        st.markdown(
+            f"""
+            <div class="side-note">
+                <div class="side-note-title">📌 ملاحظة اليوم</div>
+                <div class="side-note-date">
+                    {date.today().strftime("%Y-%m-%d")}
+                </div>
+                <div class="side-note-text">{preview}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    else:
+        st.markdown(
+            """
+            <div class="side-note">
+                <div class="side-note-title">📌 مفيش ملاحظات</div>
+                <div class="side-note-date">
+                    اكتب ملاحظة من قسم المفكرة اليومية
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
 
 # =========================================================
-# HEADER
+# TOP HEADER
 # =========================================================
+
+today_text = date.today().strftime("%Y-%m-%d")
+time_text = datetime.now().strftime("%I:%M %p")
 
 st.markdown(
-    """
-    <div class="top-header">
+    f"""
+    <div class="hero">
+        <div style="display:flex;justify-content:space-between;
+                    align-items:center;gap:20px;">
 
-        <div>
-            <div class="header-title">
-                🖨️ ZERO Advertising
+            <div>
+                <div class="hero-title">ZERO Advertising 🖨️</div>
+                <div class="hero-sub">
+                    نظام إدارة الطلبات والعملاء والمبيعات
+                    &nbsp; • &nbsp; {today_text} &nbsp; • &nbsp; {time_text}
+                </div>
             </div>
 
-            <div class="header-subtitle">
-                نظام إدارة الطلبات والعملاء والمبيعات
+            <div class="online">
+                <span class="online-dot"></span>
+                النظام يعمل بشكل طبيعي
             </div>
-        </div>
 
-        <div class="header-badge">
-            ● النظام يعمل بشكل طبيعي
         </div>
-
     </div>
     """,
-    unsafe_allow_html=True,
+    unsafe_allow_html=True
 )
 
 
 # =========================================================
-# STATISTICS
+# DASHBOARD STATS
 # =========================================================
 
 total_orders, completed, in_progress, total_sales = get_statistics()
 
-s1, s2, s3, s4 = st.columns(4)
+c1, c2, c3, c4 = st.columns(4)
 
-with s1:
-    st.markdown(
-        f"""
-        <div class="stat-card">
-            <div class="stat-icon">📦</div>
-            <div class="stat-title">إجمالي الطلبات</div>
-            <div class="stat-value">{total_orders}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+stats = [
+    ("📦", "إجمالي الطلبات", total_orders),
+    ("🚀", "طلبات قيد التنفيذ", in_progress),
+    ("✅", "تم التسليم", completed),
+    ("💰", "إجمالي قيمة الطلبات", f"{total_sales:,.0f} ج"),
+]
 
-with s2:
-    st.markdown(
-        f"""
-        <div class="stat-card">
-            <div class="stat-icon">🚀</div>
-            <div class="stat-title">طلبات قيد التنفيذ</div>
-            <div class="stat-value">{in_progress}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-with s3:
-    st.markdown(
-        f"""
-        <div class="stat-card">
-            <div class="stat-icon">✅</div>
-            <div class="stat-title">تم التسليم</div>
-            <div class="stat-value">{completed}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-with s4:
-    st.markdown(
-        f"""
-        <div class="stat-card">
-            <div class="stat-icon">💰</div>
-            <div class="stat-title">إجمالي قيمة الطلبات</div>
-            <div class="stat-value">
-                {total_sales:,.0f} ج
+for col, (icon, title, value) in zip([c1, c2, c3, c4], stats):
+    with col:
+        st.markdown(
+            f"""
+            <div class="stat-card">
+                <div class="stat-icon">{icon}</div>
+                <div class="stat-title">{title}</div>
+                <div class="stat-value">{value}</div>
             </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
+            """,
+            unsafe_allow_html=True
+        )
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -690,28 +782,25 @@ if choice == "➕  تسجيل طلب جديد":
 
     st.markdown(
         """
-        <div class="glass-card">
-
-            <div class="section-title">
-                📝 إضافة عميل وطلب جديد
+        <div class="panel">
+            <div class="panel-title">📝 تسجيل طلب جديد</div>
+            <div class="panel-sub">
+                أضف بيانات العميل والطلب والتكلفة وحالة التنفيذ.
             </div>
-
-            <div class="section-subtitle">
-                قم بإدخال بيانات العميل وتفاصيل الطلب
-            </div>
-
         </div>
         """,
-        unsafe_allow_html=True,
+        unsafe_allow_html=True
     )
 
     with st.form("add_order_form", clear_on_submit=True):
 
-        col1, col2, col3 = st.columns([1, 1, 1])
+        col1, col2, col3 = st.columns(3)
 
         with col1:
-
-            st.markdown("### 👤 بيانات العميل")
+            st.markdown(
+                '<div class="mini-title">👤 بيانات العميل</div>',
+                unsafe_allow_html=True
+            )
 
             customer_name = st.text_input(
                 "اسم العميل *",
@@ -724,18 +813,22 @@ if choice == "➕  تسجيل طلب جديد":
             )
 
         with col2:
-
-            st.markdown("### 📄 تفاصيل الطلب")
+            st.markdown(
+                '<div class="mini-title">📄 تفاصيل الطلب</div>',
+                unsafe_allow_html=True
+            )
 
             order_details = st.text_area(
                 "تفاصيل الطلب *",
-                placeholder="اكتب تفاصيل الطباعة أو التصميم هنا...",
-                height=150
+                placeholder="مثال: 500 فلاير — مقاس A5 — وجهين — ألوان...",
+                height=155
             )
 
         with col3:
-
-            st.markdown("### 💰 البيانات المالية")
+            st.markdown(
+                '<div class="mini-title">💰 الحساب والحالة</div>',
+                unsafe_allow_html=True
+            )
 
             total_cost = st.number_input(
                 "التكلفة الإجمالية (جنيه)",
@@ -753,52 +846,36 @@ if choice == "➕  تسجيل طلب جديد":
 
             order_status = st.selectbox(
                 "حالة الطلب",
-                [
-                    "قيد التنفيذ",
-                    "جاهز للتسليم",
-                    "تم التسليم"
-                ]
+                ["قيد التنفيذ", "جاهز للتسليم", "تم التسليم"]
             )
 
         st.divider()
 
-        remaining_preview = total_cost - deposit
+        if total_cost > 0:
+            remaining = total_cost - deposit
 
-        if deposit > total_cost and total_cost > 0:
+            if deposit > total_cost:
+                st.warning("⚠️ العربون أكبر من إجمالي قيمة الطلب.")
+            elif remaining > 0:
+                st.info(f"💳 المتبقي على العميل: {remaining:,.2f} جنيه")
+            else:
+                st.success("✅ تم دفع قيمة الطلب بالكامل.")
 
-            st.warning(
-                "⚠️ المبلغ المدفوع أكبر من إجمالي قيمة الطلب."
-            )
-
-        elif total_cost > 0:
-
-            st.info(
-                f"💳 المتبقي على العميل: "
-                f"{max(remaining_preview, 0):,.2f} جنيه"
-            )
-
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        submit_button = st.form_submit_button(
+        save = st.form_submit_button(
             "💾  حفظ الطلب",
             use_container_width=True
         )
 
-        if submit_button:
+        if save:
 
             if not customer_name.strip():
-
-                st.error("❌ يرجى إدخال اسم العميل.")
+                st.error("❌ اكتب اسم العميل.")
 
             elif not order_details.strip():
-
-                st.error("❌ يرجى إدخال تفاصيل الطلب.")
+                st.error("❌ اكتب تفاصيل الطلب.")
 
             elif deposit > total_cost and total_cost > 0:
-
-                st.error(
-                    "❌ العربون لا يمكن أن يكون أكبر من إجمالي الطلب."
-                )
+                st.error("❌ العربون لا يمكن أن يكون أكبر من إجمالي الطلب.")
 
             else:
 
@@ -812,8 +889,7 @@ if choice == "➕  تسجيل طلب جديد":
 
                 cursor.execute(
                     """
-                    INSERT INTO customers
-                    (name, phone)
+                    INSERT INTO customers (name, phone)
                     VALUES (?, ?)
                     """,
                     (
@@ -851,39 +927,32 @@ if choice == "➕  تسجيل طلب جديد":
                 conn.close()
 
                 st.success(
-                    f"✅ تم حفظ طلب العميل "
-                    f"'{customer_name}' بنجاح!"
+                    f"✅ تم حفظ طلب العميل «{customer_name}» بنجاح."
                 )
-
-                st.balloons()
 
 
 # =========================================================
 # 2. ORDERS
 # =========================================================
 
-elif choice == "📋  الطلبات المسجلة":
+elif choice == "📋  عرض واستعلام الطلبات":
 
     st.markdown(
         """
-        <div class="glass-card">
-
-            <div class="section-title">
-                📋 قائمة الطلبات المسجلة
+        <div class="panel">
+            <div class="panel-title">📋 الطلبات المسجلة</div>
+            <div class="panel-sub">
+                ابحث عن العملاء واستعرض جميع الطلبات والحسابات.
             </div>
-
-            <div class="section-subtitle">
-                عرض وإدارة جميع الطلبات والعملاء
-            </div>
-
         </div>
         """,
-        unsafe_allow_html=True,
+        unsafe_allow_html=True
     )
 
     conn = get_connection()
 
-    query = """
+    df = pd.read_sql_query(
+        """
         SELECT
             o.order_id AS 'رقم الطلب',
             c.name AS 'اسم العميل',
@@ -894,34 +963,32 @@ elif choice == "📋  الطلبات المسجلة":
             o.payment_status AS 'حالة الدفع',
             o.order_status AS 'حالة الطلب',
             o.order_date AS 'تاريخ الطلب'
-
         FROM orders o
-
         JOIN customers c
-        ON o.customer_id = c.customer_id
-
+            ON o.customer_id = c.customer_id
         ORDER BY o.order_id DESC
-    """
-
-    df = pd.read_sql_query(query, conn)
+        """,
+        conn
+    )
 
     conn.close()
 
-    if not df.empty:
+    if df.empty:
+        st.info("📭 لا توجد طلبات مسجلة حالياً.")
 
-        search_col1, search_col2 = st.columns([2, 1])
+    else:
 
-        with search_col1:
+        search_col, filter_col = st.columns([2, 1])
 
+        with search_col:
             search_name = st.text_input(
-                "🔍 بحث باسم العميل",
-                placeholder="اكتب اسم العميل..."
+                "🔍 البحث",
+                placeholder="ابحث باسم العميل..."
             )
 
-        with search_col2:
-
+        with filter_col:
             status_filter = st.selectbox(
-                "📌 تصفية حسب الحالة",
+                "📌 حالة الطلب",
                 [
                     "الكل",
                     "قيد التنفيذ",
@@ -931,10 +998,8 @@ elif choice == "📋  الطلبات المسجلة":
             )
 
         if search_name:
-
             df = df[
-                df["اسم العميل"]
-                .str.contains(
+                df["اسم العميل"].str.contains(
                     search_name,
                     case=False,
                     na=False
@@ -942,12 +1007,7 @@ elif choice == "📋  الطلبات المسجلة":
             ]
 
         if status_filter != "الكل":
-
-            df = df[
-                df["حالة الطلب"] == status_filter
-            ]
-
-        st.markdown("<br>", unsafe_allow_html=True)
+            df = df[df["حالة الطلب"] == status_filter]
 
         st.dataframe(
             df,
@@ -956,26 +1016,15 @@ elif choice == "📋  الطلبات المسجلة":
             height=520,
             column_config={
                 "الإجمالي": st.column_config.NumberColumn(
-                    "الإجمالي",
                     format="%.2f ج"
                 ),
-
                 "العربون": st.column_config.NumberColumn(
-                    "العربون",
                     format="%.2f ج"
                 ),
             }
         )
 
-        st.caption(
-            f"عدد النتائج المعروضة: {len(df)}"
-        )
-
-    else:
-
-        st.info(
-            "📭 لا توجد طلبات مسجلة حالياً."
-        )
+        st.caption(f"عدد النتائج: {len(df)}")
 
 
 # =========================================================
@@ -986,19 +1035,14 @@ elif choice == "⚙️  تحديث حالة طلب":
 
     st.markdown(
         """
-        <div class="glass-card">
-
-            <div class="section-title">
-                ⚙️ تحديث بيانات الطلب
+        <div class="panel">
+            <div class="panel-title">⚙️ تحديث حالة طلب</div>
+            <div class="panel-sub">
+                عدّل العربون وحالة التنفيذ وسيتم تحديث حالة الدفع تلقائياً.
             </div>
-
-            <div class="section-subtitle">
-                تعديل حالة الطلب والمبلغ المدفوع
-            </div>
-
         </div>
         """,
-        unsafe_allow_html=True,
+        unsafe_allow_html=True
     )
 
     conn = get_connection()
@@ -1006,33 +1050,33 @@ elif choice == "⚙️  تحديث حالة طلب":
 
     cursor.execute(
         """
-        SELECT
-            o.order_id,
-            c.name
+        SELECT o.order_id, c.name
         FROM orders o
-
         JOIN customers c
-        ON o.customer_id = c.customer_id
-
+            ON o.customer_id = c.customer_id
         ORDER BY o.order_id DESC
         """
     )
 
-    orders_list = cursor.fetchall()
+    orders = cursor.fetchall()
 
-    if orders_list:
+    if not orders:
+
+        st.info("📭 لا توجد طلبات لتعديلها.")
+
+    else:
 
         options = {
-            f"طلب رقم #{o[0]} — {o[1]}": o[0]
-            for o in orders_list
+            f"طلب #{order_id} — {name}": order_id
+            for order_id, name in orders
         }
 
-        selected_option = st.selectbox(
-            "📌 اختر الطلب للتعديل",
+        selected_label = st.selectbox(
+            "📌 اختر الطلب",
             list(options.keys())
         )
 
-        selected_order_id = options[selected_option]
+        selected_id = options[selected_label]
 
         cursor.execute(
             """
@@ -1044,12 +1088,10 @@ elif choice == "⚙️  تحديث حالة طلب":
             FROM orders
             WHERE order_id = ?
             """,
-            (selected_order_id,)
+            (selected_id,)
         )
 
-        current_order = cursor.fetchone()
-
-        st.markdown("<br>", unsafe_allow_html=True)
+        current = cursor.fetchone()
 
         col1, col2 = st.columns(2)
 
@@ -1057,143 +1099,187 @@ elif choice == "⚙️  تحديث حالة طلب":
 
             st.markdown(
                 """
-                <div class="glass-card">
-                <div class="section-title">
-                    💰 البيانات المالية
+                <div class="panel">
+                    <div class="panel-title">💰 الحساب</div>
                 </div>
                 """,
                 unsafe_allow_html=True
             )
 
-            total_cost = float(
-                current_order[0] or 0
-            )
+            total_cost = float(current[0] or 0)
 
             new_deposit = st.number_input(
                 "المبلغ المدفوع",
                 min_value=0.0,
-                value=float(current_order[1] or 0),
+                value=float(current[1] or 0),
                 step=10.0
             )
 
             remaining = total_cost - new_deposit
 
             if new_deposit > total_cost and total_cost > 0:
-
-                st.error(
-                    "❌ المبلغ المدفوع أكبر من قيمة الطلب."
-                )
-
+                st.error("❌ المبلغ المدفوع أكبر من قيمة الطلب.")
+                new_payment_status = current[2]
             else:
-
                 new_payment_status = calculate_payment(
                     total_cost,
                     new_deposit
                 )
 
                 if remaining > 0:
-
                     st.info(
-                        f"💳 المتبقي: "
-                        f"{remaining:,.2f} جنيه"
+                        f"المتبقي: {remaining:,.2f} جنيه"
                     )
-
                 elif total_cost > 0:
-
-                    st.success(
-                        "✅ تم دفع قيمة الطلب بالكامل"
-                    )
-
-                else:
-
-                    st.info(
-                        "لم يتم تحديد قيمة للطلب."
-                    )
-
-            st.markdown("</div>", unsafe_allow_html=True)
+                    st.success("✅ تم دفع الطلب بالكامل.")
 
         with col2:
 
             st.markdown(
                 """
-                <div class="glass-card">
-                <div class="section-title">
-                    📦 حالة الطلب
+                <div class="panel">
+                    <div class="panel-title">📦 التنفيذ</div>
                 </div>
                 """,
                 unsafe_allow_html=True
             )
 
-            status_options = [
+            statuses = [
                 "قيد التنفيذ",
                 "جاهز للتسليم",
                 "تم التسليم"
             ]
 
-            current_status = current_order[3]
-
-            if current_status not in status_options:
-                current_status = "قيد التنفيذ"
+            current_status = current[3]
+            if current_status not in statuses:
+                current_status = statuses[0]
 
             new_order_status = st.selectbox(
-                "الحالة الجديدة",
-                status_options,
-                index=status_options.index(
-                    current_status
-                )
+                "حالة الطلب الجديدة",
+                statuses,
+                index=statuses.index(current_status)
             )
 
-            st.markdown("</div>", unsafe_allow_html=True)
-
-        st.markdown("<br>", unsafe_allow_html=True)
-
         if st.button(
-            "🔄  تحديث البيانات",
+            "🔄  حفظ التعديلات",
             use_container_width=True
         ):
 
             if new_deposit > total_cost and total_cost > 0:
-
-                st.error(
-                    "❌ لا يمكن حفظ مبلغ أكبر من إجمالي الطلب."
-                )
+                st.error("❌ لا يمكن دفع مبلغ أكبر من قيمة الطلب.")
 
             else:
 
                 cursor.execute(
                     """
                     UPDATE orders
-
                     SET
                         deposit = ?,
                         payment_status = ?,
                         order_status = ?
-
                     WHERE order_id = ?
                     """,
                     (
                         new_deposit,
                         new_payment_status,
                         new_order_status,
-                        selected_order_id
+                        selected_id
                     )
                 )
 
                 conn.commit()
-
-                st.success(
-                    "✅ تم تحديث بيانات الطلب بنجاح!"
-                )
-
+                st.success("✅ تم تحديث الطلب بنجاح.")
                 st.rerun()
 
-    else:
+    conn.close()
 
-        st.info(
-            "📭 لا توجد طلبات مسجلة حالياً."
+
+# =========================================================
+# 4. DAILY NOTEBOOK
+# =========================================================
+
+elif choice == "📝  المفكرة اليومية":
+
+    st.markdown(
+        """
+        <div class="panel">
+            <div class="panel-title">📝 المفكرة اليومية</div>
+            <div class="panel-sub">
+                اكتب أي ملاحظات أو مهام أو تعليمات خاصة بالمطبعة.
+                كل يوم له ملاحظة مستقلة بالتاريخ.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    today = date.today()
+    today_iso = today.isoformat()
+
+    st.markdown(
+        f"""
+        <div class="panel">
+            <div class="panel-title">📌 ملاحظة يوم {today_iso}</div>
+            <div class="panel-sub">
+                أي كلام تكتبه هنا يتم حفظه لهذا اليوم فقط ويمكن تعديله لاحقاً.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    current_note = get_today_note()
+
+    note = st.text_area(
+        "اكتب ملاحظتك هنا",
+        value=current_note,
+        height=260,
+        placeholder=(
+            "مثال:\n"
+            "• أحمد يستلم البانر الساعة 5\n"
+            "• مراجعة تصميم محل الملابس\n"
+            "• شراء خامة فينيل\n"
+            "• الاتصال بالعميل محمد..."
+        )
+    )
+
+    if st.button(
+        "💾  حفظ ملاحظة اليوم",
+        use_container_width=True
+    ):
+
+        save_today_note(note.strip())
+
+        st.success(
+            f"✅ تم حفظ ملاحظة يوم {today_iso}."
         )
 
-    conn.close()
+        st.rerun()
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    recent = get_recent_notes(10)
+
+    if not recent.empty:
+
+        st.markdown(
+            """
+            <div class="panel">
+                <div class="panel-title">🗓️ الملاحظات السابقة</div>
+                <div class="panel-sub">
+                    آخر 10 أيام تم تسجيل ملاحظات بها.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        for _, row in recent.iterrows():
+
+            with st.expander(
+                f"📅 {row['note_date']}"
+            ):
+                st.write(row["note_text"])
 
 
 # =========================================================
@@ -1205,8 +1291,8 @@ st.markdown(
     <div class="footer">
         ZERO Advertising Management System
         <br>
-        <span>PRINT • DESIGN • ADVERTISING</span>
+        <strong>PRINT • DESIGN • ADVERTISING</strong>
     </div>
     """,
-    unsafe_allow_html=True,
+    unsafe_allow_html=True
 )
