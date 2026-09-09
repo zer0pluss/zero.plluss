@@ -792,7 +792,7 @@ if choice == "➕  تسجيل طلب جديد":
                 placeholder="01XXXXXXXXX"
             )
 
- 
+        with col2:
             
             order_details = st.text_area(
                 "تفاصيل الطلب *",
