@@ -20,7 +20,7 @@ st.set_page_config(
 # LOGO
 # =========================================================
 
-LOGO_PATH = "IMG_20260908_200426.jpg"
+LOGO_PATH = "zero.jpg"
 
 
 def get_logo_base64():
