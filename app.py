@@ -722,7 +722,8 @@ st.markdown(
         <div style="display:flex;justify-content:space-between;
                     align-items:center;gap:20px;">
             <div>
-                <div class="hero-title">ZERO PLUS</div>
+                <div class="hero-title">ZERO Advertising | Management System</div>
+                <div class="hero-title">ZERO|PLUS</div>
                 <div class="hero-sub">
                     نظام إدارة الطلبات والعملاء والمبيعات
                     &nbsp; • &nbsp; {today_text} &nbsp; • &nbsp; {time_text}
