@@ -110,7 +110,7 @@ def set_custom_design():
             background-repeat: no-repeat;
             background-position: 54% 48%;
             background-size: min(780px, 65vw);
-            opacity: 0.055;
+            opacity: 0.5;
             filter: grayscale(15%) contrast(90%);
             pointer-events: none;
             z-index: 0;
