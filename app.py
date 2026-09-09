@@ -806,15 +806,15 @@ if choice == "➕  تسجيل طلب جديد":
 
             total_cost = st.number_input(
                 "التكلفة الإجمالية (جنيه)",
-                min_value=0,
-                step=10.0,
+                min_value=0.0,
+                step=0.0,
                 format="%.2f"
             )
 
             deposit = st.number_input(
                 "المبلغ المدفوع / العربون",
-                min_value=0,
-                step=10.0,
+                min_value=0.0,
+                step=0.0,
                 format="%.2f"
             )
 
