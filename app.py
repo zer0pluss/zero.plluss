@@ -108,12 +108,12 @@ def set_custom_design():
             inset: 0;
             background-image: url("data:image/jpeg;base64,{logo_b64}");
             background-repeat: non-repeat;
-            background-position: 20% 19%;
+            background-position: 20% 20%;
             background-size: min(1500px, 85vw);
             opacity: 0.077;
-            filter: grayscale(15%) contrast(95%);
+            filter: grayscale(90%) contrast(95%);
             pointer-events: none;
-            z-index: 5;
+            z-index: 0;
         }}
         """
 
