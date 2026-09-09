@@ -106,9 +106,9 @@ def set_custom_design():
             content: "";
             position: fixed;
             inset: 0;
-            background-image: url("data:image/jpeg;base64,{logo_b64}");
+            background-image: url("data:image/png;base64,{logo_b64}");
             background-repeat: non-repeat;
-            background-position: 10% 60%;
+            background-position: 40% 60%;
             background-size: min(780px, 65vw);
             opacity: 0.077;
             filter: none;
