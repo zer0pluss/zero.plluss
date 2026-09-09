@@ -639,7 +639,7 @@ with st.sidebar:
             <div class="brand-box">
                 <img class="brand-logo"
                      src="data:image/jpeg;base64,{logo_b64}">
-                <div class="brand-name">ZERO Advertising</div>
+                <div class="brand-name">ZERO PLUS</div>
                 <div class="brand-caption">
                     PRINT • DESIGN • ADVERTISING
                 </div>
@@ -653,6 +653,7 @@ with st.sidebar:
     st.markdown(
         '<div class="side-label">القائمة الرئيسية</div>',
         unsafe_allow_html=True
+        text-align:right;
     )
 
     menu = [
