@@ -782,7 +782,6 @@ if choice == "➕  تسجيل طلب جديد":
 
         with col1:
             st.markdown(
-                '<div class="mini-title">👤 بيانات العميل</div>',
                 unsafe_allow_html=True
             )
 
@@ -798,7 +797,6 @@ if choice == "➕  تسجيل طلب جديد":
 
         with col2:
             st.markdown(
-                '<div class="mini-title">📄 تفاصيل الطلب</div>',
                 unsafe_allow_html=True
             )
 
@@ -810,14 +808,13 @@ if choice == "➕  تسجيل طلب جديد":
 
         with col3:
             st.markdown(
-                '<div class="mini-title">💰 الحساب والحالة</div>',
                 unsafe_allow_html=True
             )
 
             total_cost = st.number_input(
                 "التكلفة الإجمالية (جنيه)",
-                min_value=0.0,
-                step=10.0,
+                min_value=0,
+                step=0,
                 format="%.2f"
             )
 
