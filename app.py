@@ -720,7 +720,7 @@ st.markdown(
     f"""
     <div class="hero">
         <div style="display:flex;justify-content:space-between;
-                    align-items:center;gap:20px;">
+                    align-items:center;gap:20px;direction:ltr">
             <div>
                 <div class="hero-title">ZERO Advertising | Management System</div>
                 <div class="hero-title"> {today_text} &nbsp</div>
