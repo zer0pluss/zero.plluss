@@ -1,14 +1,91 @@
+import base64
 import sqlite3
 import pandas as pd
 import streamlit as st
 
 # ضبط إعدادات الصفحة
 st.set_page_config(
-    page_title="Zero printer", page_icon="🖨️", layout="wide"
+    page_title="ZERO Advertising - نظام الإدارة",
+    page_icon="🖨️",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
 
-# اتصال بقاعدة البيانات وإنشاء الجداول
+# تحويل اللوجو لخلفية شيك بـ CSS
+def set_custom_design():
+  st.markdown(
+      """
+    <style>
+    /* اتجاه الصفحة من اليمين للشمال */
+    html, body, [class*="css"]  {
+        direction: rtl;
+        text-align: right;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    
+    /* خلفية التطبيق مع لوجو فخم وبسيط */
+    .stApp {
+        background: linear-gradient(rgba(15, 23, 42, 0.85), rgba(15, 23, 42, 0.85)), 
+                    url("https://raw.githubusercontent.com/zer0pluss/zero.pluss/main/IMG_20260908_200426.jpg");
+        background-size: contain;
+        background-repeat: no-repeat;
+        background-position: center;
+        background-attachment: fixed;
+    }
+
+    /* تحسين القائمة الجانبية */
+    section[data-testid="stSidebar"] {
+        background-color: #1e293b !important;
+        border-left: 2px solid #e21b22;
+    }
+    
+    section[data-testid="stSidebar"] * {
+        color: #ffffff !important;
+        text-align: right;
+    }
+
+    /* العناوين والكروت */
+    h1, h2, h3 {
+        color: #f8fafc !important;
+        font-weight: 700;
+    }
+
+    /* تحسين شكل الجداول والمدخلات */
+    .stTextInput input, .stTextArea textarea, .stSelectbox select, .stNumberInput input {
+        background-color: #334155 !important;
+        color: #ffffff !important;
+        border-radius: 8px !important;
+        border: 1px solid #475569 !important;
+        text-align: right;
+    }
+
+    /* أزرار بروفيشنال */
+    .stButton>button {
+        width: 100%;
+        background-color: #e21b22 !important;
+        color: white !important;
+        font-weight: bold !important;
+        border-radius: 8px !important;
+        border: none !important;
+        padding: 10px 20px !important;
+        transition: 0.3s;
+    }
+
+    .stButton>button:hover {
+        background-color: #b91c1c !important;
+        box-shadow: 0 4px 12px rgba(226, 27, 34, 0.4);
+    }
+    </style>
+    """,
+      unsafe_allow_html=True,
+  )
+
+
+set_custom_design()
+
+
+# اتصال بقاعدة البيانات
 def init_db():
   conn = sqlite3.connect("print_shop.db")
   cursor = conn.cursor()
@@ -38,15 +115,13 @@ def init_db():
 
 init_db()
 
-st.title("Zero printer")
+st.title("🎯 ZERO Advertising - إدارة الطلبات")
 
-# القائمة الجانبية للتنقل
+# القائمة الجانبية يمين
 menu = ["تسجيل طلب جديد", "عرض واستعلام الطلبات", "تحديث حالة طلب"]
-choice = st.sidebar.selectbox("القائمة الرئيسية", menu)
+choice = st.sidebar.selectbox("📌 القائمة الرئيسية", menu)
 
-# ---------------------------------------------------------
-# 1. شاشة تسجيل طلب جديد
-# ---------------------------------------------------------
+# 1. تسجيل طلب جديد
 if choice == "تسجيل طلب جديد":
   st.subheader("📝 إضافة عميل وطلب جديد")
 
@@ -62,7 +137,9 @@ if choice == "تسجيل طلب جديد":
       total_cost = st.number_input(
           "التكلفة الإجمالية (جنيه)", min_value=0.0, step=10.0
       )
-      deposit = st.number_input("المبلغ المدفوع / العربون (جنيه)", min_value=0.0, step=10.0)
+      deposit = st.number_input(
+          "المبلغ المدفوع / العربون (جنيه)", min_value=0.0, step=10.0
+      )
       order_status = st.selectbox(
           "حالة الطلب", ["قيد التنفيذ", "جاهز للتسليم", "تم التسليم"]
       )
@@ -73,7 +150,6 @@ if choice == "تسجيل طلب جديد":
       if not customer_name or not order_details:
         st.error("يرجى إدخال اسم العميل وتفاصيل الطلب!")
       else:
-        # حساب حالة الدفع تلقائياً
         remaining = total_cost - deposit
         if remaining <= 0 and total_cost > 0:
           payment_status = "تم الدفع بالكامل"
@@ -84,15 +160,12 @@ if choice == "تسجيل طلب جديد":
 
         conn = sqlite3.connect("print_shop.db")
         cursor = conn.cursor()
-
-        # إضافة العميل
         cursor.execute(
             "INSERT INTO customers (name, phone) VALUES (?, ?)",
             (customer_name, customer_phone),
         )
         customer_id = cursor.lastrowid
 
-        # إضافة الطلب
         cursor.execute(
             """
             INSERT INTO orders (customer_id, order_details, total_cost, deposit, payment_status, order_status)
@@ -112,9 +185,7 @@ if choice == "تسجيل طلب جديد":
         conn.close()
         st.success(f"تم حفظ طلب العميل '{customer_name}' بنجاح!")
 
-# ---------------------------------------------------------
-# 2. شاشة عرض واستعلام الطلبات
-# ---------------------------------------------------------
+# 2. عرض الطلبات
 elif choice == "عرض واستعلام الطلبات":
   st.subheader("📋 قائمة الطلبات المسجلة")
 
@@ -137,16 +208,13 @@ elif choice == "عرض واستعلام الطلبات":
   df = pd.read_sql_query(query, conn)
   conn.close()
 
-  # فلتر بحث باسم العميل
   search_name = st.text_input("🔍 بحث باسم العميل:")
   if search_name:
     df = df[df["اسم العميل"].str.contains(search_name, case=False, na=False)]
 
   st.dataframe(df, use_container_width=True)
 
-# ---------------------------------------------------------
-# 3. شاشة تحديث حالة طلب
-# ---------------------------------------------------------
+# 3. تحديث حالة الطلب
 elif choice == "تحديث حالة طلب":
   st.subheader("⚙️ تعديل وتحديث الطلبات")
 
@@ -163,7 +231,6 @@ elif choice == "تحديث حالة طلب":
     selected_option = st.selectbox("اختر الطلب للتعديل", list(options.keys()))
     selected_order_id = options[selected_option]
 
-    # جلب تفاصيل الطلب المختار
     cursor.execute(
         """
         SELECT total_cost, deposit, payment_status, order_status 
