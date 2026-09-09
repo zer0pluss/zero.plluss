@@ -722,16 +722,11 @@ st.markdown(
         <div style="display:flex;justify-content:space-between;
                     align-items:center;gap:20px;">
             <div>
-                <div class="hero-title">ZERO Advertising 🖨️</div>
+                <div class="hero-title">ZERO Advertising </div>
                 <div class="hero-sub">
                     نظام إدارة الطلبات والعملاء والمبيعات
                     &nbsp; • &nbsp; {today_text} &nbsp; • &nbsp; {time_text}
                 </div>
-            </div>
-            <div class="online">
-                <span class="online-dot"></span>
-                النظام يعمل بشكل طبيعي
-            </div>
         </div>
     </div>
     """,
