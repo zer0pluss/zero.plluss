@@ -686,7 +686,7 @@ with st.sidebar:
         st.markdown(
             f"""
             <div class="side-note">
-                <div class="side-note-title">📌 ملاحظة اليوم</div>
+                <div class="side-note-title">📌 Today note</div>
                 <div class="side-note-date">
                     {date.today().strftime("%Y-%m-%d")}
                 </div>
@@ -720,9 +720,9 @@ st.markdown(
     f"""
     <div class="hero">
         <div style="display:flex;justify-content:space-between;
-                    align-items:center;gap:30px;">
+                    align-items:center;gap:20px;">
             <div>
-                <div class="hero-title">"ZERO PLUS                    "</div>
+                <div class="hero-title">ZERO PLUS</div>
                 <div class="hero-sub">
                     نظام إدارة الطلبات والعملاء والمبيعات
                     &nbsp; • &nbsp; {today_text} &nbsp; • &nbsp; {time_text}
