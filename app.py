@@ -652,8 +652,7 @@ with st.sidebar:
 
     st.markdown(
         '<div class="side-label">القائمة الرئيسية</div>',
-        unsafe_allow_html=True,
-        text-align:right;
+        unsafe_allow_html=True
     )
 
     menu = [
