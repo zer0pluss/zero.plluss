@@ -111,7 +111,7 @@ def set_custom_design():
             background-position: 20% 20%;
             background-size: min(1500px, 85vw);
             opacity: 0.077;
-            filter: grayscale(90%) contrast(95%);
+            filter: grayscale(0%) contrast(95%);
             pointer-events: none;
             z-index: 0;
         }}
