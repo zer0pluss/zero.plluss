@@ -720,9 +720,9 @@ st.markdown(
     f"""
     <div class="hero">
         <div style="display:flex;justify-content:space-between;
-                    align-items:center;gap:20px;">
+                    align-items:center;gap:30px;">
             <div>
-                <div class="hero-title">ZERO Advertising </div>
+                <div class="hero-title">ZERO PLUS</div>
                 <div class="hero-sub">
                     نظام إدارة الطلبات والعملاء والمبيعات
                     &nbsp; • &nbsp; {today_text} &nbsp; • &nbsp; {time_text}
