@@ -1,40 +1,37 @@
-import base64
-import sqlite3
 import pandas as pd
+from psycopg2 import pool
 import streamlit as st
 
 # ضبط إعدادات الصفحة
 st.set_page_config(
-    page_title="ZERO Advertising - نظام الإدارة",
+    page_title="ZERO Advertising ",
     page_icon="🖨️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 
-# تحويل اللوجو لخلفية شيك بـ CSS
+# تصميم الواجهة واللوجو خلفية
 def set_custom_design():
   st.markdown(
       """
     <style>
-    /* اتجاه الصفحة من اليمين للشمال */
     html, body, [class*="css"]  {
         direction: rtl;
         text-align: right;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
     
-    /* خلفية التطبيق مع لوجو فخم وبسيط */
+    /* اللوجو في الخلفية بـ Opacity خفيفة */
     .stApp {
-        background: linear-gradient(rgba(15, 23, 42, 0.85), rgba(15, 23, 42, 0.85)), 
-                    url("https://raw.githubusercontent.com/zer0pluss/zero.pluss/main/IMG_20260908_200426.jpg");
+        background: linear-gradient(rgba(15, 23, 42, 0.88), rgba(15, 23, 42, 0.88)), 
+                    url("https://raw.githubusercontent.com/zer0pluss/zero.pluss/main/logo.jpg");
         background-size: contain;
         background-repeat: no-repeat;
         background-position: center;
         background-attachment: fixed;
     }
 
-    /* تحسين القائمة الجانبية */
     section[data-testid="stSidebar"] {
         background-color: #1e293b !important;
         border-left: 2px solid #e21b22;
@@ -45,13 +42,11 @@ def set_custom_design():
         text-align: right;
     }
 
-    /* العناوين والكروت */
     h1, h2, h3 {
         color: #f8fafc !important;
         font-weight: 700;
     }
 
-    /* تحسين شكل الجداول والمدخلات */
     .stTextInput input, .stTextArea textarea, .stSelectbox select, .stNumberInput input {
         background-color: #334155 !important;
         color: #ffffff !important;
@@ -60,7 +55,6 @@ def set_custom_design():
         text-align: right;
     }
 
-    /* أزرار بروفيشنال */
     .stButton>button {
         width: 100%;
         background-color: #e21b22 !important;
@@ -85,43 +79,59 @@ def set_custom_design():
 set_custom_design()
 
 
-# اتصال بقاعدة البيانات
-def init_db():
-  conn = sqlite3.connect("print_shop.db")
+# الاتصال بقاعدة بيانات Supabase الدائمة
+@st.cache_resource
+def init_connection():
+  return pool.SimpleConnectionPool(1, 10, st.secrets["postgres"]["url"])
+
+
+def run_query(query, params=None, fetch=False):
+  conn_pool = init_connection()
+  conn = conn_pool.getconn()
   cursor = conn.cursor()
-  cursor.execute("""
+  cursor.execute(query, params)
+  result = None
+  if fetch:
+    result = cursor.fetchall()
+  conn.commit()
+  cursor.close()
+  conn_pool.putconn(conn)
+  return result
+
+
+# إنشاء الجداول إن لم تكن موجودة
+def init_db():
+  run_query("""
         CREATE TABLE IF NOT EXISTS customers (
-            customer_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id SERIAL PRIMARY KEY,
             name TEXT NOT NULL,
             phone TEXT
-        )
+        );
     """)
-  cursor.execute("""
+  run_query("""
         CREATE TABLE IF NOT EXISTS orders (
-            order_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            customer_id INTEGER,
+            order_id SERIAL PRIMARY KEY,
+            customer_id INTEGER REFERENCES customers(customer_id),
             order_details TEXT NOT NULL,
             order_date DATE DEFAULT CURRENT_DATE,
             total_cost REAL,
             deposit REAL,
             payment_status TEXT,
-            order_status TEXT,
-            FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
-        )
+            order_status TEXT
+        );
     """)
-  conn.commit()
-  conn.close()
 
 
-init_db()
+try:
+  init_db()
+except Exception as e:
+  st.warning("برجاء إضافه رابط قاعدة بيانات Supabase في الـ Secrets للبدء.")
 
 st.title("🎯 ZERO Advertising - إدارة الطلبات")
 
-# القائمة الجانبية يمين
 menu = ["تسجيل طلب جديد", "عرض واستعلام الطلبات", "تحديث حالة طلب"]
 choice = st.sidebar.selectbox("📌 القائمة الرئيسية", menu)
 
-# 1. تسجيل طلب جديد
 if choice == "تسجيل طلب جديد":
   st.subheader("📝 إضافة عميل وطلب جديد")
 
@@ -158,18 +168,19 @@ if choice == "تسجيل طلب جديد":
         else:
           payment_status = "لم يدفع"
 
-        conn = sqlite3.connect("print_shop.db")
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO customers (name, phone) VALUES (?, ?)",
+        # إضافة العميل والطلب
+        res = run_query(
+            "INSERT INTO customers (name, phone) VALUES (%s, %s) RETURNING"
+            " customer_id;",
             (customer_name, customer_phone),
+            fetch=True,
         )
-        customer_id = cursor.lastrowid
+        customer_id = res[0][0]
 
-        cursor.execute(
+        run_query(
             """
             INSERT INTO orders (customer_id, order_details, total_cost, deposit, payment_status, order_status)
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s)
         """,
             (
                 customer_id,
@@ -181,64 +192,72 @@ if choice == "تسجيل طلب جديد":
             ),
         )
 
-        conn.commit()
-        conn.close()
         st.success(f"تم حفظ طلب العميل '{customer_name}' بنجاح!")
 
-# 2. عرض الطلبات
 elif choice == "عرض واستعلام الطلبات":
   st.subheader("📋 قائمة الطلبات المسجلة")
 
-  conn = sqlite3.connect("print_shop.db")
-  query = """
+  data = run_query(
+      """
         SELECT 
-            o.order_id AS 'رقم الطلب',
-            c.name AS 'اسم العميل',
-            c.phone AS 'التليفون',
-            o.order_details AS 'التفاصيل',
-            o.total_cost AS 'الإجمالي',
-            o.deposit AS 'العربون',
-            o.payment_status AS 'حالة الدفع',
-            o.order_status AS 'حالة الطلب',
-            o.order_date AS 'تاريخ الطلب'
+            o.order_id AS "رقم الطلب",
+            c.name AS "اسم العميل",
+            c.phone AS "التليفون",
+            o.order_details AS "التفاصيل",
+            o.total_cost AS "الإجمالي",
+            o.deposit AS "العربون",
+            o.payment_status AS "حالة الدفع",
+            o.order_status AS "حالة الطلب",
+            o.order_date AS "تاريخ الطلب"
         FROM orders o
         JOIN customers c ON o.customer_id = c.customer_id
         ORDER BY o.order_id DESC
-    """
-  df = pd.read_sql_query(query, conn)
-  conn.close()
+    """,
+      fetch=True,
+  )
 
-  search_name = st.text_input("🔍 بحث باسم العميل:")
-  if search_name:
-    df = df[df["اسم العميل"].str.contains(search_name, case=False, na=False)]
+  if data:
+    df = pd.DataFrame(
+        data,
+        columns=[
+            "رقم الطلب",
+            "اسم العميل",
+            "التليفون",
+            "التفاصيل",
+            "الإجمالي",
+            "العربون",
+            "حالة الدفع",
+            "حالة الطلب",
+            "تاريخ الطلب",
+        ],
+    )
+    search_name = st.text_input("🔍 بحث باسم العميل:")
+    if search_name:
+      df = df[df["اسم العميل"].str.contains(search_name, case=False, na=False)]
+    st.dataframe(df, use_container_width=True)
+  else:
+    st.info("لا توجد طلبات مسجلة.")
 
-  st.dataframe(df, use_container_width=True)
-
-# 3. تحديث حالة الطلب
 elif choice == "تحديث حالة طلب":
   st.subheader("⚙️ تعديل وتحديث الطلبات")
 
-  conn = sqlite3.connect("print_shop.db")
-  cursor = conn.cursor()
-  cursor.execute(
+  orders_list = run_query(
       "SELECT o.order_id, c.name FROM orders o JOIN customers c ON"
-      " o.customer_id = c.customer_id"
+      " o.customer_id = c.customer_id",
+      fetch=True,
   )
-  orders_list = cursor.fetchall()
 
   if orders_list:
     options = {f"طلب رقم {o[0]} - العميل: {o[1]}": o[0] for o in orders_list}
     selected_option = st.selectbox("اختر الطلب للتعديل", list(options.keys()))
     selected_order_id = options[selected_option]
 
-    cursor.execute(
-        """
-        SELECT total_cost, deposit, payment_status, order_status 
-        FROM orders WHERE order_id = ?
-    """,
+    current_order = run_query(
+        "SELECT total_cost, deposit, payment_status, order_status FROM orders"
+        " WHERE order_id = %s",
         (selected_order_id,),
-    )
-    current_order = cursor.fetchone()
+        fetch=True,
+    )[0]
 
     col1, col2 = st.columns(2)
     with col1:
@@ -269,11 +288,11 @@ elif choice == "تحديث حالة طلب":
       )
 
     if st.button("تحديث البيانات"):
-      cursor.execute(
+      run_query(
           """
             UPDATE orders 
-            SET deposit = ?, payment_status = ?, order_status = ?
-            WHERE order_id = ?
+            SET deposit = %s, payment_status = %s, order_status = %s
+            WHERE order_id = %s
         """,
           (
               new_deposit,
@@ -282,9 +301,6 @@ elif choice == "تحديث حالة طلب":
               selected_order_id,
           ),
       )
-      conn.commit()
       st.success("تم تحديث حالة الطلب بنجاح!")
   else:
     st.info("لا توجد طلبات مسجلة حالياً.")
-
-  conn.close()
