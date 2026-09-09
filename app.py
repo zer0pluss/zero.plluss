@@ -780,7 +780,7 @@ if choice == "➕  تسجيل طلب جديد":
 
         col1, col2, col3 = st.columns(3)
 
-        with col1:
+
 
             customer_name = st.text_input(
                 "اسم العميل *",
