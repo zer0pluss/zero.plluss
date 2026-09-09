@@ -105,7 +105,7 @@ def set_custom_design():
         .stApp::before {{
             content: "";
             position: fixed;
-            inset: 2;
+            inset: 0;
             background-image: url("data:image/jpeg;base64,{logo_b64}");
             background-repeat: repeat;
             background-position: 80% 70%;
@@ -113,7 +113,7 @@ def set_custom_design():
             opacity: 0.077;
             filter: grayscale(15%) contrast(95%);
             pointer-events: none;
-            z-index: 0;
+            z-index: 1;
         }}
         """
 
