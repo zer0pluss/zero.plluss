@@ -723,10 +723,7 @@ st.markdown(
                     align-items:center;gap:20px;direction:ltr">
             <div>
                 <div class="hero-title">ZERO Advertising | Management System</div>
-                <div class="big-title"> {today_text} &nbsp</div>
-                <div class="hero">
-                    &nbsp; {today_text} &nbsp; • &nbsp; {time_text}
-                </div>
+                <div class="verybig-title"> {today_text} &nbsp</div>
         </div>
     </div>
     """,
