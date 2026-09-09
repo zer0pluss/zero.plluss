@@ -808,14 +808,14 @@ if choice == "➕  تسجيل طلب جديد":
                 "التكلفة الإجمالية (جنيه)",
                 min_value=0.0,
                 step=0.0,
-                 format="%."
+                 format="%.0f"
             )
 
             deposit = st.number_input(
                 "المبلغ المدفوع / العربون",
                 min_value=0.0,
                 step=0.0,
-                format="%."
+ 
             )
 
             order_status = st.selectbox(
