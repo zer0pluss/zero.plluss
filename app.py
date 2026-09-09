@@ -113,7 +113,7 @@ def set_custom_design():
             opacity: 0.077;
             filter: grayscale(15%) contrast(95%);
             pointer-events: none;
-            z-index: 1;
+            z-index: 5;
         }}
         """
 
