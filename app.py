@@ -115,7 +115,7 @@ def init_db():
 
 init_db()
 
-st.title("🎯 ZERO Advertising - إدارة الطلبات")
+st.title("🎯 ZERO Advertising system")
 
 # القائمة الجانبية يمين
 menu = ["تسجيل طلب جديد", "عرض واستعلام الطلبات", "تحديث حالة طلب"]
