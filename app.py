@@ -107,9 +107,9 @@ def set_custom_design():
             position: fixed;
             inset: 0;
             background-image: url("data:image/jpeg;base64,{logo_b64}");
-            background-repeat: repeat;
+            background-repeat: non-repeat;
             background-position: 80% 70%;
-            background-size: min(500px, 100vw);
+            background-size: min(2000px, 1000vw);
             opacity: 0.077;
             filter: grayscale(15%) contrast(95%);
             pointer-events: none;
