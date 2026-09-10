@@ -47,7 +47,7 @@ DB_NAME = "print_shop.db"
 
 # Local backups are always enabled.
 BACKUP_DIR = FilePath("ZERO_Backups")
-# This file stores the optional iCloud Drive folder path.
+# This file stores the optional custom cloud folder path (Google Drive).
 BACKUP_CONFIG = FilePath("zero_backup_config.json")
 
 
@@ -101,17 +101,69 @@ def load_backup_config():
     try:
         if BACKUP_CONFIG.exists():
             data = json.loads(BACKUP_CONFIG.read_text(encoding="utf-8"))
-            return data if isinstance(data, dict) else {"icloud_path": ""}
+            return data if isinstance(data, dict) else {"gdrive_path": ""}
     except Exception:
         pass
-    return {"icloud_path": ""}
+    return {"gdrive_path": ""}
 
 
-def save_backup_config(icloud_path):
+def save_backup_config(gdrive_path):
     BACKUP_CONFIG.write_text(
-        json.dumps({"icloud_path": icloud_path}, ensure_ascii=False, indent=2),
+        json.dumps({"gdrive_path": gdrive_path}, ensure_ascii=False, indent=2),
         encoding="utf-8"
     )
+
+
+# Google Drive is detected automatically — no manual path needed.
+# Requires the free "Google Drive for Desktop" app, signed in to any Gmail.
+GDRIVE_BACKUP_FOLDER_NAME = "ZERO_Backups"
+
+
+def find_google_drive():
+    """Auto-detect the Google Drive folder on this machine."""
+    home = FilePath.home()
+
+    # Old Backup and Sync / mirror mode installs a real folder in the profile.
+    candidates = [
+        home / "Google Drive",
+        home / "My Drive",
+        home / "Google Drive" / "My Drive",
+    ]
+
+    # Drive for Desktop streaming mode mounts a virtual drive letter
+    # (usually G:) that contains a "My Drive" folder.
+    for letter in "GHIJKLMNOPQRSTUVWXYZ":
+        candidates.append(FilePath(f"{letter}:/My Drive"))
+        candidates.append(FilePath(f"{letter}:/Google Drive"))
+
+    for folder in candidates:
+        try:
+            if folder.exists():
+                return folder
+        except OSError:
+            continue
+
+    return None
+
+
+def get_gdrive_backup_dir():
+    """
+    Where cloud backups should go.
+    Priority: manual path from settings > auto-detected Google Drive > None.
+    """
+    config = load_backup_config()
+    config_path = str(
+        config.get("gdrive_path") or config.get("icloud_path") or ""  # old key kept as fallback
+    ).strip()
+
+    if config_path:
+        return FilePath(config_path)
+
+    detected = find_google_drive()
+    if detected:
+        return detected / GDRIVE_BACKUP_FOLDER_NAME
+
+    return None
 
 
 def create_sqlite_backup(folder):
@@ -133,24 +185,21 @@ def create_sqlite_backup(folder):
 
 
 def backup_after_save():
-    """Always create a local backup; create an iCloud backup if configured."""
-    result = {"local": None, "icloud": None, "icloud_error": None}
+    """Local backup + automatic Google Drive backup (detected or configured)."""
+    result = {"local": None, "gdrive": None, "gdrive_error": None}
 
     try:
         result["local"] = create_sqlite_backup(BACKUP_DIR)
     except Exception as exc:
-        result["icloud_error"] = f"فشل الـBackup المحلي: {exc}"
+        result["gdrive_error"] = f"فشل الـBackup المحلي: {exc}"
         return result
 
-    icloud_path = str(load_backup_config().get("icloud_path", "")).strip()
-    if icloud_path:
+    gdrive_dir = get_gdrive_backup_dir()
+    if gdrive_dir:
         try:
-            icloud_folder = FilePath(icloud_path)
-            if not icloud_folder.exists():
-                raise FileNotFoundError("مسار iCloud غير موجود حالياً")
-            result["icloud"] = create_sqlite_backup(icloud_folder)
+            result["gdrive"] = create_sqlite_backup(gdrive_dir)
         except Exception as exc:
-            result["icloud_error"] = str(exc)
+            result["gdrive_error"] = str(exc)
 
     return result
 
@@ -1003,10 +1052,10 @@ if choice == "➕  تسجيل طلب جديد":
                 st.success(
                     f"✅ تم حفظ طلب العميل «{customer_name}» بنجاح."
                 )
-                if backup_result["icloud_error"]:
+                if backup_result["gdrive_error"]:
                     st.warning(
                         "⚠️ الداتا اتحفظت، لكن حصلت مشكلة في الـBackup: "
-                        + backup_result["icloud_error"]
+                        + backup_result["gdrive_error"]
                     )
 
 
@@ -1272,10 +1321,10 @@ elif choice == "⚙️  تحديث حالة طلب":
                 backup_result = backup_after_save()
 
                 st.success("✅ تم تحديث الطلب بنجاح.")
-                if backup_result["icloud_error"]:
+                if backup_result["gdrive_error"]:
                     st.warning(
                         "⚠️ التحديث اتحفظ، لكن حصلت مشكلة في الـBackup: "
-                        + backup_result["icloud_error"]
+                        + backup_result["gdrive_error"]
                     )
                 st.rerun()
 
@@ -1342,10 +1391,10 @@ elif choice == "📝  المفكرة اليومية":
         st.success(
             f"✅ تم حفظ ملاحظة يوم {today_iso}."
         )
-        if backup_result["icloud_error"]:
+        if backup_result["gdrive_error"]:
             st.warning(
                 "⚠️ الملاحظة اتحفظت، لكن حصلت مشكلة في الـBackup: "
-                + backup_result["icloud_error"]
+                + backup_result["gdrive_error"]
             )
 
         st.rerun()
@@ -1377,7 +1426,7 @@ elif choice == "📝  المفكرة اليومية":
 
 
 # =========================================================
-# 5. BACKUPS / ICLOUD
+# 5. BACKUPS / GOOGLE DRIVE
 # =========================================================
 
 elif choice == "💾  النسخ الاحتياطية":
@@ -1388,7 +1437,7 @@ elif choice == "💾  النسخ الاحتياطية":
             <div class="panel-title">💾 حماية البيانات</div>
             <div class="panel-sub">
                 الداتا الأساسية محفوظة في SQLite على الجهاز، وكل عملية حفظ ناجحة
-                تعمل Backup تلقائي. تقدر تضيف iCloud لاحقاً من هنا بدون ما تغيّر النظام.
+                تعمل Backup تلقائي محلي + نسخة على Google Drive بدون أي تدخل منك.
             </div>
         </div>
         """,
@@ -1396,46 +1445,56 @@ elif choice == "💾  النسخ الاحتياطية":
     )
 
     config = load_backup_config()
-    current_icloud = str(config.get("icloud_path", "")).strip()
+    current_gdrive = str(config.get("gdrive_path", "")).strip()
+    detected_drive = find_google_drive()
+    active_gdrive_dir = get_gdrive_backup_dir()
 
     st.markdown(
         """
         <div class="panel">
-            <div class="panel-title">☁️ ربط iCloud لاحقاً</div>
+            <div class="panel-title">☁️ حالة Google Drive</div>
             <div class="panel-sub">
-                مش محتاج Apple ID أو إيميل دلوقتي. بعد تثبيت iCloud Drive على الجهاز،
-                اكتب مسار فولدر ZERO Backups فقط. لا تضع قاعدة البيانات الأساسية داخله.
+                النظام بيكتشف Google Drive تلقائياً — مفيش أي مسار محتاج تكتبه.
+                كل عملية حفظ بتعمل نسخة هناك من غير أي تدخل منك.
             </div>
         </div>
         """,
         unsafe_allow_html=True
     )
 
-    icloud_path = st.text_input(
-        "مسار فولدر iCloud Drive للـBackup",
-        value=current_icloud,
-        placeholder=r"مثال: C:\Users\YourName\iCloudDrive\ZERO Backups",
-        help="اتركه فاضي لحد ما تجهز iCloud. النظام سيظل يعمل بالـLocal Backup تلقائياً."
-    )
+    if active_gdrive_dir:
+        st.success(
+            f"☁️ Google Drive متصل تلقائياً — النسخ بتروح على:\n\n`{active_gdrive_dir}`"
+        )
+    else:
+        st.warning(
+            "⚠️ Google Drive مش متعرف عليه على الجهاز ده حالياً.\n\n"
+            "النسخ المحلية شغالة عادي.\n\n"
+            "عشان تفعل الاتصال التلقائي: ثبّت برنامج Google Drive for Desktop (مجاني)، "
+            "سجل دخول بأي Gmail، وافتح Google Drive مرة واحدة على الأقل. "
+            "بعدها افتح الصفحة دي تاني وهتلاقيه متصل لوحده."
+        )
 
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("☁️ حفظ مسار iCloud", use_container_width=True):
-            save_backup_config(icloud_path.strip())
-            if icloud_path.strip() and not FilePath(icloud_path.strip()).exists():
-                st.warning("المسار غير موجود حالياً. لما تثبت iCloud وتعمل الفولدر، استخدم نفس المسار.")
-            else:
-                st.success("✅ تم حفظ إعداد iCloud.")
+    with st.expander("⚙️ تخصيص مسار يدوي (اختياري — سيبه فاضي للتشغيل التلقائي)"):
+        gdrive_path = st.text_input(
+            "مسار مخصص بدل الاكتشاف التلقائي",
+            value=current_gdrive,
+            placeholder="سيبه فاضي = تشغيل تلقائي",
+            help="لو عايز فولدر معين غير اللي النظام بيكتشفه لوحده، اكتبه هنا. فاضي = تلقائي."
+        )
+        if st.button("☁️ حفظ الإعداد", use_container_width=True):
+            save_backup_config(gdrive_path.strip())
+            st.success("✅ تم حفظ الإعداد.")
+            st.rerun()
 
-    with c2:
-        if st.button("💾 عمل Backup الآن", use_container_width=True):
-            result = backup_after_save()
-            if result["local"]:
-                st.success(f"✅ Local Backup: {result['local'].name}")
-            if result["icloud"]:
-                st.success(f"☁️ iCloud Backup: {result['icloud'].name}")
-            if result["icloud_error"]:
-                st.warning(result["icloud_error"])
+    if st.button("💾 عمل Backup الآن", use_container_width=True):
+        result = backup_after_save()
+        if result["local"]:
+            st.success(f"✅ Local Backup: {result['local'].name}")
+        if result["gdrive"]:
+            st.success(f"☁️ Google Drive Backup: {result['gdrive'].name}")
+        if result["gdrive_error"]:
+            st.warning(result["gdrive_error"])
 
     st.markdown("<br>", unsafe_allow_html=True)
 
