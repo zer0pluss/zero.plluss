@@ -43,16 +43,18 @@ logo_b64 = image_base64(LOGO_PATH)
 # DATABASE
 # =========================================================
 
+
 DB_NAME = "print_shop.db"
 
-# Local backups are always enabled.
-BACKUP_DIR = FilePath("ZERO_Backups")
-# This file stores the optional custom cloud folder path (Google Drive).
+# Google Drive folder name
+GDRIVE_FOLDER_NAME = "ZERO_Data"
+
+# This file remembers the Google Drive location if needed
 BACKUP_CONFIG = FilePath("zero_backup_config.json")
 
 
 def get_connection():
-    return sqlite3.connect(DB_NAME)
+    return sqlite3.connect(DB_NAME, timeout=30)
 
 
 def init_db():
@@ -82,7 +84,6 @@ def init_db():
         )
     """)
 
-    # Daily notes / notebook
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS daily_notes (
             note_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -94,144 +95,260 @@ def init_db():
 
     conn.commit()
     conn.close()
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 
+
+# =========================================================
+# GOOGLE DRIVE
+# =========================================================
 
 def load_backup_config():
     try:
         if BACKUP_CONFIG.exists():
-            data = json.loads(BACKUP_CONFIG.read_text(encoding="utf-8"))
-            return data if isinstance(data, dict) else {"gdrive_path": ""}
+            data = json.loads(
+                BACKUP_CONFIG.read_text(encoding="utf-8")
+            )
+
+            if isinstance(data, dict):
+                return data
+
     except Exception:
         pass
+
     return {"gdrive_path": ""}
 
 
 def save_backup_config(gdrive_path):
     BACKUP_CONFIG.write_text(
-        json.dumps({"gdrive_path": gdrive_path}, ensure_ascii=False, indent=2),
+        json.dumps(
+            {"gdrive_path": gdrive_path},
+            ensure_ascii=False,
+            indent=2
+        ),
         encoding="utf-8"
     )
 
 
-# Google Drive is detected automatically — no manual path needed.
-# Requires the free "Google Drive for Desktop" app, signed in to any Gmail.
-GDRIVE_BACKUP_FOLDER_NAME = "ZERO_Backups"
-
-
 def find_google_drive():
-    """Auto-detect the Google Drive folder on this machine."""
+    """
+    يحاول العثور على Google Drive for Desktop
+    تلقائياً في Windows.
+    """
+
     home = FilePath.home()
 
-    # Old Backup and Sync / mirror mode installs a real folder in the profile.
     candidates = [
+        # Common folders
         home / "Google Drive",
-        home / "My Drive",
         home / "Google Drive" / "My Drive",
-    ]
+        home / "My Drive",
 
-    # Drive for Desktop streaming mode mounts a virtual drive letter
-    # (usually G:) that contains a "My Drive" folder.
-    for letter in "GHIJKLMNOPQRSTUVWXYZ":
-        candidates.append(FilePath(f"{letter}:/My Drive"))
-        candidates.append(FilePath(f"{letter}:/Google Drive"))
+        # Common Google Drive Desktop locations
+        FilePath("G:/"),
+        FilePath("H:/"),
+        FilePath("I:/"),
+        FilePath("J:/"),
+        FilePath("K:/"),
+        FilePath("L:/"),
+        FilePath("M:/"),
+        FilePath("N:/"),
+        FilePath("O:/"),
+        FilePath("P:/"),
+        FilePath("Q:/"),
+        FilePath("R:/"),
+        FilePath("S:/"),
+        FilePath("T:/"),
+        FilePath("U:/"),
+        FilePath("V:/"),
+        FilePath("W:/"),
+        FilePath("X:/"),
+        FilePath("Y:/"),
+        FilePath("Z:/"),
+    ]
 
     for folder in candidates:
         try:
-            if folder.exists():
+            if not folder.exists():
+                continue
+
+            # If this is directly "My Drive"
+            if folder.name.lower() == "my drive":
                 return folder
-        except OSError:
+
+            # Check for My Drive inside it
+            my_drive = folder / "My Drive"
+
+            if my_drive.exists():
+                return my_drive
+
+            # Google Drive Desktop can expose the drive
+            # directly as the root
+            if folder.drive:
+                return folder
+
+        except Exception:
             continue
 
     return None
 
 
-def get_gdrive_backup_dir():
+def get_gdrive_data_dir():
     """
-    Where cloud backups should go.
-    Priority: manual path from settings > auto-detected Google Drive > None.
+    Returns the folder where the application database
+    should be synchronized.
     """
+
     config = load_backup_config()
-    config_path = str(
-        config.get("gdrive_path") or config.get("icloud_path") or ""  # old key kept as fallback
+
+    manual_path = str(
+        config.get("gdrive_path", "")
     ).strip()
 
-    if config_path:
-        return FilePath(config_path)
+    # If user selected a manual Google Drive path
+    if manual_path:
+        folder = FilePath(manual_path)
 
-    detected = find_google_drive()
-    if detected:
-        return detected / GDRIVE_BACKUP_FOLDER_NAME
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            return folder
+        except Exception:
+            pass
+
+    # Otherwise detect Google Drive automatically
+    detected_drive = find_google_drive()
+
+    if detected_drive:
+        data_folder = detected_drive / GDRIVE_FOLDER_NAME
+        data_folder.mkdir(parents=True, exist_ok=True)
+        return data_folder
 
     return None
 
 
-def create_sqlite_backup(folder):
-    """Create a consistent SQLite backup using SQLite's backup API."""
-    folder = FilePath(folder)
-    folder.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    target = folder / f"ZERO_backup_{stamp}.db"
+def sync_database_to_google_drive():
+    """
+    Copies the current SQLite database to Google Drive.
 
-    source = sqlite3.connect(DB_NAME, timeout=30)
-    destination = sqlite3.connect(str(target))
-    try:
-        source.backup(destination)
-    finally:
-        destination.close()
-        source.close()
+    Only ONE database file is maintained in Google Drive.
+    """
 
-    return target
-
-
-def backup_after_save():
-    """Local backup + automatic Google Drive backup (detected or configured)."""
-    result = {"local": None, "gdrive": None, "gdrive_error": None}
+    result = {
+        "success": False,
+        "path": None,
+        "error": None
+    }
 
     try:
-        result["local"] = create_sqlite_backup(BACKUP_DIR)
+        if not FilePath(DB_NAME).exists():
+            result["error"] = "ملف قاعدة البيانات غير موجود."
+            return result
+
+        gdrive_folder = get_gdrive_data_dir()
+
+        if gdrive_folder is None:
+            result["error"] = (
+                "Google Drive مش متعرف عليه. "
+                "تأكد إن Google Drive for Desktop شغال."
+            )
+            return result
+
+        target = gdrive_folder / "print_shop.db"
+
+        # Copy the current database to Google Drive
+        shutil.copy2(DB_NAME, target)
+
+        result["success"] = True
+        result["path"] = str(target)
+
     except Exception as exc:
-        result["gdrive_error"] = f"فشل الـBackup المحلي: {exc}"
-        return result
-
-    gdrive_dir = get_gdrive_backup_dir()
-    if gdrive_dir:
-        try:
-            result["gdrive"] = create_sqlite_backup(gdrive_dir)
-        except Exception as exc:
-            result["gdrive_error"] = str(exc)
+        result["error"] = str(exc)
 
     return result
 
 
-def list_local_backups():
-    return sorted(
-        BACKUP_DIR.glob("ZERO_backup_*.db"),
-        key=lambda x: x.stat().st_mtime,
-        reverse=True
-    )
+def backup_after_save():
+    """
+    Compatibility function used by the rest of the application.
+
+    Every successful save automatically synchronizes
+    the database with Google Drive.
+    """
+
+    result = {
+        "local": True,
+        "gdrive": None,
+        "gdrive_error": None
+    }
+
+    sync_result = sync_database_to_google_drive()
+
+    if sync_result["success"]:
+        result["gdrive"] = sync_result["path"]
+    else:
+        result["gdrive_error"] = sync_result["error"]
+
+    return result
+
+
+def create_sqlite_backup(folder):
+    """
+    Kept for compatibility with the existing application.
+    Creates a copy of the database in the requested folder.
+    """
+
+    folder = FilePath(folder)
+    folder.mkdir(parents=True, exist_ok=True)
+
+    target = folder / "print_shop.db"
+
+    shutil.copy2(DB_NAME, target)
+
+    return target
 
 
 def restore_backup(backup_file):
+    """
+    Restore database from a Google Drive/local database copy.
+    """
+
     backup_file = FilePath(backup_file)
+
     if not backup_file.exists():
-        raise FileNotFoundError("ملف الـBackup غير موجود")
+        raise FileNotFoundError(
+            "ملف قاعدة البيانات غير موجود."
+        )
 
-    # Safety backup of current DB before restoring.
-    safety_dir = BACKUP_DIR / "before_restore"
-    safety_dir.mkdir(parents=True, exist_ok=True)
-    if FilePath(DB_NAME).exists():
-        create_sqlite_backup(safety_dir)
-
+    # Check database integrity before restoring
     test = sqlite3.connect(str(backup_file))
+
     try:
-        if test.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
-            raise ValueError("النسخة الاحتياطية تالفة")
+        integrity = test.execute(
+            "PRAGMA integrity_check"
+        ).fetchone()[0]
+
+        if integrity != "ok":
+            raise ValueError(
+                "نسخة قاعدة البيانات تالفة."
+            )
+
     finally:
         test.close()
 
+    # Close any active connection before replacing the DB
     shutil.copy2(backup_file, DB_NAME)
 
+
+def list_local_backups():
+    """
+    Compatibility function.
+    The new system doesn't create multiple backups.
+    """
+
+    return []
+
+
+# =========================================================
+# INITIALIZE DATABASE
+# =========================================================
 
 init_db()
 
