@@ -1,4 +1,3 @@
-```python
 import base64
 import json
 import shutil
@@ -27,15 +26,6 @@ st.set_page_config(
 
 LOGO_PATH = "zero.jpg"
 
-DB_NAME = "print_shop.db"
-
-BACKUP_DIR = FilePath("ZERO_Backups")
-BACKUP_CONFIG = FilePath("zero_backup_config.json")
-
-GDRIVE_BACKUP_FOLDER_NAME = "ZERO_Backups"
-
-MAX_LOCAL_BACKUPS = 10
-
 
 def image_base64(path):
     try:
@@ -52,12 +42,19 @@ logo_b64 = image_base64(LOGO_PATH)
 # DATABASE
 # =========================================================
 
+DB_NAME = "print_shop.db"
+
+BACKUP_DIR = FilePath("ZERO_Backups")
+BACKUP_CONFIG = FilePath("zero_backup_config.json")
+
+GDRIVE_BACKUP_FOLDER_NAME = "ZERO_Backups"
+
+
 def get_connection():
-    return sqlite3.connect(DB_NAME, timeout=30)
+    return sqlite3.connect(DB_NAME)
 
 
 def init_db():
-
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -96,59 +93,52 @@ def init_db():
     conn.commit()
     conn.close()
 
-    BACKUP_DIR.mkdir(
-        parents=True,
-        exist_ok=True
-    )
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 
-
-# =========================================================
-# GOOGLE DRIVE
-# =========================================================
 
 def load_backup_config():
-
     try:
-
         if BACKUP_CONFIG.exists():
-
             data = json.loads(
-                BACKUP_CONFIG.read_text(
-                    encoding="utf-8"
-                )
+                BACKUP_CONFIG.read_text(encoding="utf-8")
             )
-
-            if isinstance(data, dict):
-
-                return data
-
+            return data if isinstance(data, dict) else {
+                "gdrive_path": ""
+            }
     except Exception:
         pass
 
-    return {
-        "gdrive_path": ""
-    }
+    return {"gdrive_path": ""}
+
+
+def save_backup_config(gdrive_path):
+    BACKUP_CONFIG.write_text(
+        json.dumps(
+            {"gdrive_path": gdrive_path},
+            ensure_ascii=False,
+            indent=2
+        ),
+        encoding="utf-8"
+    )
 
 
 def find_google_drive():
-
     drive = FilePath("G:/")
 
     try:
+        if drive.exists():
 
-        if not drive.exists():
-            return None
+            my_drive = drive / "My Drive"
 
-        my_drive = drive / "My Drive"
+            if my_drive.exists():
+                return my_drive
 
-        if my_drive.exists():
-            return my_drive
-
-        return drive
+            return drive
 
     except OSError:
+        pass
 
-        return None
+    return None
 
 
 def get_gdrive_backup_dir():
@@ -156,10 +146,7 @@ def get_gdrive_backup_dir():
     config = load_backup_config()
 
     manual_path = str(
-        config.get(
-            "gdrive_path",
-            ""
-        )
+        config.get("gdrive_path", "")
     ).strip()
 
     if manual_path:
@@ -167,14 +154,11 @@ def get_gdrive_backup_dir():
         folder = FilePath(manual_path)
 
         try:
-
             folder.mkdir(
                 parents=True,
                 exist_ok=True
             )
-
             return folder
-
         except Exception:
             pass
 
@@ -183,33 +167,24 @@ def get_gdrive_backup_dir():
     if detected:
 
         backup_folder = (
-            detected /
-            GDRIVE_BACKUP_FOLDER_NAME
+            detected / GDRIVE_BACKUP_FOLDER_NAME
         )
 
-        try:
+        backup_folder.mkdir(
+            parents=True,
+            exist_ok=True
+        )
 
-            backup_folder.mkdir(
-                parents=True,
-                exist_ok=True
-            )
-
-            return backup_folder
-
-        except Exception:
-
-            return None
+        return backup_folder
 
     return None
 
 
-# =========================================================
-# LOCAL BACKUP
-# =========================================================
+def create_sqlite_backup(folder):
 
-def create_local_backup():
+    folder = FilePath(folder)
 
-    BACKUP_DIR.mkdir(
+    folder.mkdir(
         parents=True,
         exist_ok=True
     )
@@ -219,7 +194,7 @@ def create_local_backup():
     )
 
     target = (
-        BACKUP_DIR /
+        folder /
         f"ZERO_backup_{stamp}.db"
     )
 
@@ -229,119 +204,18 @@ def create_local_backup():
     )
 
     destination = sqlite3.connect(
-        str(target),
-        timeout=30
+        str(target)
     )
 
     try:
-
-        source.backup(
-            destination
-        )
+        source.backup(destination)
 
     finally:
-
         destination.close()
         source.close()
-
-    cleanup_local_backups()
 
     return target
 
-
-def cleanup_local_backups():
-
-    backups = sorted(
-        BACKUP_DIR.glob(
-            "ZERO_backup_*.db"
-        ),
-        key=lambda x: x.stat().st_mtime,
-        reverse=True
-    )
-
-    old_backups = backups[
-        MAX_LOCAL_BACKUPS:
-    ]
-
-    for backup in old_backups:
-
-        try:
-            backup.unlink()
-        except Exception:
-            pass
-
-
-# =========================================================
-# GOOGLE DRIVE BACKUP
-# =========================================================
-
-def create_gdrive_backup():
-
-    gdrive_dir = get_gdrive_backup_dir()
-
-    if not gdrive_dir:
-
-        raise RuntimeError(
-            "Google Drive (G:) غير متاح حالياً."
-        )
-
-    latest_file = (
-        gdrive_dir /
-        "latest.db"
-    )
-
-    temp_file = (
-        gdrive_dir /
-        "latest_temp.db"
-    )
-
-    source = sqlite3.connect(
-        DB_NAME,
-        timeout=30
-    )
-
-    destination = sqlite3.connect(
-        str(temp_file),
-        timeout=30
-    )
-
-    try:
-
-        source.backup(
-            destination
-        )
-
-    finally:
-
-        destination.close()
-        source.close()
-
-    try:
-
-        if latest_file.exists():
-            latest_file.unlink()
-
-        temp_file.replace(
-            latest_file
-        )
-
-    except Exception:
-
-        if temp_file.exists():
-
-            try:
-                temp_file.unlink()
-            except Exception:
-                pass
-
-        raise
-
-    return latest_file
-
-
-# =========================================================
-# AUTOMATIC BACKUP
-# =========================================================
 
 def backup_after_save():
 
@@ -351,11 +225,10 @@ def backup_after_save():
         "gdrive_error": None
     }
 
-    # Local backup
     try:
 
-        result["local"] = (
-            create_local_backup()
+        result["local"] = create_sqlite_backup(
+            BACKUP_DIR
         )
 
     except Exception as exc:
@@ -364,32 +237,37 @@ def backup_after_save():
             f"فشل الـBackup المحلي: {exc}"
         )
 
-    # Google Drive backup
-    try:
+        return result
 
-        result["gdrive"] = (
-            create_gdrive_backup()
-        )
+    gdrive_dir = get_gdrive_backup_dir()
 
-    except Exception as exc:
+    if gdrive_dir:
+
+        try:
+
+            result["gdrive"] = create_sqlite_backup(
+                gdrive_dir
+            )
+
+        except Exception as exc:
+
+            result["gdrive_error"] = (
+                f"فشل Backup Google Drive: {exc}"
+            )
+
+    else:
 
         result["gdrive_error"] = (
-            f"Google Drive: {exc}"
+            "Google Drive (G:) غير متاح حالياً."
         )
 
     return result
 
 
-# =========================================================
-# RESTORE
-# =========================================================
-
 def list_local_backups():
 
     return sorted(
-        BACKUP_DIR.glob(
-            "ZERO_backup_*.db"
-        ),
+        BACKUP_DIR.glob("ZERO_backup_*.db"),
         key=lambda x: x.stat().st_mtime,
         reverse=True
     )
@@ -397,19 +275,15 @@ def list_local_backups():
 
 def restore_backup(backup_file):
 
-    backup_file = FilePath(
-        backup_file
-    )
+    backup_file = FilePath(backup_file)
 
     if not backup_file.exists():
-
         raise FileNotFoundError(
             "ملف الـBackup غير موجود"
         )
 
     safety_dir = (
-        BACKUP_DIR /
-        "before_restore"
+        BACKUP_DIR / "before_restore"
     )
 
     safety_dir.mkdir(
@@ -419,39 +293,12 @@ def restore_backup(backup_file):
 
     if FilePath(DB_NAME).exists():
 
-        stamp = datetime.now().strftime(
-            "%Y-%m-%d_%H-%M-%S"
+        create_sqlite_backup(
+            safety_dir
         )
-
-        safety_file = (
-            safety_dir /
-            f"before_restore_{stamp}.db"
-        )
-
-        source = sqlite3.connect(
-            DB_NAME,
-            timeout=30
-        )
-
-        destination = sqlite3.connect(
-            str(safety_file),
-            timeout=30
-        )
-
-        try:
-
-            source.backup(
-                destination
-            )
-
-        finally:
-
-            destination.close()
-            source.close()
 
     test = sqlite3.connect(
-        str(backup_file),
-        timeout=30
+        str(backup_file)
     )
 
     try:
@@ -461,13 +308,11 @@ def restore_backup(backup_file):
         ).fetchone()[0]
 
         if integrity != "ok":
-
             raise ValueError(
                 "النسخة الاحتياطية تالفة"
             )
 
     finally:
-
         test.close()
 
     shutil.copy2(
@@ -557,6 +402,18 @@ header {{
     50% {{
         box-shadow: 0 0 0 8px rgba(226,27,43,0);
     }}
+}}
+
+.fade-up {{
+    animation: fadeUp .55s ease both;
+}}
+
+.fade-up-2 {{
+    animation: fadeUp .70s ease both;
+}}
+
+.fade-up-3 {{
+    animation: fadeUp .85s ease both;
 }}
 
 section[data-testid="stSidebar"] {{
@@ -673,6 +530,26 @@ section[data-testid="stSidebar"] * {{
     margin-top: 3px;
 }}
 
+.online {{
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    background: rgba(34,197,94,.08);
+    border: 1px solid rgba(34,197,94,.20);
+    color: #86efac;
+    border-radius: 30px;
+    padding: 7px 12px;
+    font-size: 11px;
+}}
+
+.online-dot {{
+    width: 7px;
+    height: 7px;
+    background: #22c55e;
+    border-radius: 50%;
+    box-shadow: 0 0 10px #22c55e;
+}}
+
 .stat-card {{
     background:
         linear-gradient(145deg, rgba(20,31,50,.94), rgba(9,15,26,.92));
@@ -741,6 +618,13 @@ section[data-testid="stSidebar"] * {{
     font-size: 11px;
     margin-top: 2px;
     margin-bottom: 18px;
+}}
+
+.mini-title {{
+    color: #d8dee8;
+    font-size: 14px;
+    font-weight: 800;
+    margin-bottom: 9px;
 }}
 
 div[data-baseweb="input"] > div,
@@ -833,11 +717,9 @@ set_custom_design()
 def calculate_payment(total, deposit):
 
     if total > 0 and deposit >= total:
-
         return "تم الدفع بالكامل"
 
     if deposit > 0:
-
         return (
             f"تم دفع عربون — المتبقي: "
             f"{total - deposit:,.2f} ج"
@@ -858,7 +740,6 @@ def get_statistics():
     conn.close()
 
     if df.empty:
-
         return 0, 0, 0, 0
 
     return (
@@ -985,7 +866,7 @@ with st.sidebar:
         "📋  عرض واستعلام الطلبات",
         "⚙️  تحديث حالة طلب",
         "📝  المفكرة اليومية",
-        "💾  حماية البيانات",
+        "💾  النسخ الاحتياطية",
     ]
 
     choice = st.selectbox(
@@ -1003,7 +884,6 @@ with st.sidebar:
         preview = today_note[:150]
 
         if len(today_note) > 150:
-
             preview += "..."
 
         st.markdown(
@@ -1221,9 +1101,7 @@ if choice == "➕  تسجيل طلب جديد":
 
         if total_cost > 0:
 
-            remaining = (
-                total_cost - deposit
-            )
+            remaining = total_cost - deposit
 
             if deposit > total_cost:
 
@@ -1326,9 +1204,7 @@ if choice == "➕  تسجيل طلب جديد":
                 conn.commit()
                 conn.close()
 
-                backup_result = (
-                    backup_after_save()
-                )
+                backup_result = backup_after_save()
 
                 st.success(
                     f"✅ تم حفظ طلب العميل "
@@ -1338,14 +1214,14 @@ if choice == "➕  تسجيل طلب جديد":
                 if backup_result["gdrive"]:
 
                     st.info(
-                        "☁️ تم تحديث نسخة Google Drive تلقائياً."
+                        "☁️ تم إنشاء نسخة على Google Drive."
                     )
 
                 if backup_result["gdrive_error"]:
 
                     st.warning(
-                        "⚠️ الداتا اتحفظت محلياً، "
-                        "لكن Google Drive لم يتم تحديثه: "
+                        "⚠️ الداتا اتحفظت محليًا، "
+                        "لكن حصلت مشكلة في الـBackup: "
                         + backup_result["gdrive_error"]
                     )
 
@@ -1509,8 +1385,6 @@ elif choice == "⚙️  تحديث حالة طلب":
             "📭 لا توجد طلبات لتعديلها."
         )
 
-        conn.close()
-
     else:
 
         options = {
@@ -1632,7 +1506,6 @@ elif choice == "⚙️  تحديث حالة طلب":
             current_status = current[3]
 
             if current_status not in statuses:
-
                 current_status = statuses[0]
 
             new_order_status = st.selectbox(
@@ -1691,18 +1564,23 @@ elif choice == "⚙️  تحديث حالة طلب":
                 if backup_result["gdrive"]:
 
                     st.info(
-                        "☁️ تم تحديث نسخة Google Drive تلقائياً."
+                        "☁️ تم تحديث نسخة Google Drive."
                     )
 
                 if backup_result["gdrive_error"]:
 
                     st.warning(
-                        "⚠️ التحديث اتحفظ محلياً، "
-                        "لكن Google Drive لم يتم تحديثه: "
+                        "⚠️ التحديث اتحفظ، "
+                        "لكن حصلت مشكلة في الـBackup: "
                         + backup_result["gdrive_error"]
                     )
 
                 st.rerun()
+
+    try:
+        conn.close()
+    except Exception:
+        pass
 
 
 # =========================================================
@@ -1780,14 +1658,14 @@ elif choice == "📝  المفكرة اليومية":
         if backup_result["gdrive"]:
 
             st.info(
-                "☁️ تم تحديث نسخة Google Drive تلقائياً."
+                "☁️ تم حفظ نسخة Google Drive."
             )
 
         if backup_result["gdrive_error"]:
 
             st.warning(
-                "⚠️ الملاحظة اتحفظت محلياً، "
-                "لكن Google Drive لم يتم تحديثه: "
+                "⚠️ الملاحظة اتحفظت محليًا، "
+                "لكن حصلت مشكلة في الـBackup: "
                 + backup_result["gdrive_error"]
             )
 
@@ -1829,10 +1707,10 @@ elif choice == "📝  المفكرة اليومية":
 
 
 # =========================================================
-# 5. DATA PROTECTION
+# 5. BACKUPS
 # =========================================================
 
-elif choice == "💾  حماية البيانات":
+elif choice == "💾  النسخ الاحتياطية":
 
     st.markdown(
         """
@@ -1842,7 +1720,8 @@ elif choice == "💾  حماية البيانات":
             </div>
 
             <div class="panel-sub">
-                الحفظ والنسخ الاحتياطي يعملان تلقائياً مع كل عملية حفظ.
+                الداتا الأساسية محفوظة محلياً، وكل عملية حفظ تعمل
+                Backup محلي + Google Drive تلقائياً.
             </div>
         </div>
         """,
@@ -1853,23 +1732,62 @@ elif choice == "💾  حماية البيانات":
         get_gdrive_backup_dir()
     )
 
+    st.markdown(
+        """
+        <div class="panel">
+            <div class="panel-title">
+                ☁️ حالة Google Drive
+            </div>
+
+            <div class="panel-sub">
+                Google Drive يتم اكتشافه تلقائياً من G:.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
     if active_gdrive_dir:
 
         st.success(
-            "☁️ Google Drive متصل ويعمل تلقائياً."
-        )
-
-        st.info(
-            f"النسخة الحالية:\n\n"
-            f"`{active_gdrive_dir / 'latest.db'}`"
+            f"☁️ Google Drive متصل — "
+            f"النسخ بتروح على:\n\n"
+            f"`{active_gdrive_dir}`"
         )
 
     else:
 
         st.warning(
             "⚠️ Google Drive (G:) غير متاح حالياً.\n\n"
-            "الداتا الأساسية ما زالت محفوظة على الجهاز."
+            "النسخ المحلية شغالة عادي."
         )
+
+    if st.button(
+        "💾 عمل Backup الآن",
+        use_container_width=True
+    ):
+
+        result = backup_after_save()
+
+        if result["local"]:
+
+            st.success(
+                f"✅ Local Backup: "
+                f"{result['local'].name}"
+            )
+
+        if result["gdrive"]:
+
+            st.success(
+                f"☁️ Google Drive Backup: "
+                f"{result['gdrive'].name}"
+            )
+
+        if result["gdrive_error"]:
+
+            st.warning(
+                result["gdrive_error"]
+            )
 
     st.markdown(
         "<br>",
@@ -1886,7 +1804,7 @@ elif choice == "💾  حماية البيانات":
             </div>
 
             <div class="panel-sub">
-                يتم الاحتفاظ بآخر {MAX_LOCAL_BACKUPS} نسخ تلقائياً.
+                عدد النسخ الحالية: {len(backups)}
             </div>
         </div>
         """,
@@ -1916,11 +1834,11 @@ elif choice == "💾  حماية البيانات":
 
         st.warning(
             "⚠️ الاسترجاع يستبدل الداتا الحالية. "
-            "سيتم إنشاء نسخة أمان قبل الاسترجاع."
+            "قبل الاسترجاع سيتم إنشاء نسخة أمان تلقائياً."
         )
 
         if st.button(
-            "🔄  استرجاع النسخة المختارة",
+            "🔄 استرجاع النسخة المختارة",
             use_container_width=True
         ):
 
@@ -1944,7 +1862,7 @@ elif choice == "💾  حماية البيانات":
     else:
 
         st.info(
-            "📭 لم يتم إنشاء نسخ محلية بعد."
+            "📭 أول عملية حفظ ستنشئ أول Backup تلقائياً."
         )
 
 
@@ -1968,4 +1886,3 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-```
