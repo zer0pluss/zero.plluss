@@ -22,6 +22,7 @@ st.set_page_config(
 
 # =========================================================
 # FILES
+# Put zero.jpg beside this Python file
 # =========================================================
 
 LOGO_PATH = "zero.jpg"
@@ -44,10 +45,10 @@ logo_b64 = image_base64(LOGO_PATH)
 
 DB_NAME = "print_shop.db"
 
+# Local backups are always enabled.
 BACKUP_DIR = FilePath("ZERO_Backups")
+# This file stores the optional custom cloud folder path (Google Drive).
 BACKUP_CONFIG = FilePath("zero_backup_config.json")
-
-GDRIVE_BACKUP_FOLDER_NAME = "ZERO_Backups"
 
 
 def get_connection():
@@ -81,6 +82,7 @@ def init_db():
         )
     """)
 
+    # Daily notes / notebook
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS daily_notes (
             note_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,124 +94,89 @@ def init_db():
 
     conn.commit()
     conn.close()
-
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def load_backup_config():
     try:
         if BACKUP_CONFIG.exists():
-            data = json.loads(
-                BACKUP_CONFIG.read_text(encoding="utf-8")
-            )
-            return data if isinstance(data, dict) else {
-                "gdrive_path": ""
-            }
+            data = json.loads(BACKUP_CONFIG.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else {"gdrive_path": ""}
     except Exception:
         pass
-
     return {"gdrive_path": ""}
 
 
 def save_backup_config(gdrive_path):
     BACKUP_CONFIG.write_text(
-        json.dumps(
-            {"gdrive_path": gdrive_path},
-            ensure_ascii=False,
-            indent=2
-        ),
+        json.dumps({"gdrive_path": gdrive_path}, ensure_ascii=False, indent=2),
         encoding="utf-8"
     )
 
 
+# Google Drive is detected automatically — no manual path needed.
+# Requires the free "Google Drive for Desktop" app, signed in to any Gmail.
+GDRIVE_BACKUP_FOLDER_NAME = "ZERO_Backups"
+
+
 def find_google_drive():
-    drive = FilePath("G:/")
+    """Auto-detect the Google Drive folder on this machine."""
+    home = FilePath.home()
 
-    try:
-        if drive.exists():
+    # Old Backup and Sync / mirror mode installs a real folder in the profile.
+    candidates = [
+        home / "Google Drive",
+        home / "My Drive",
+        home / "Google Drive" / "My Drive",
+    ]
 
-            my_drive = drive / "My Drive"
+    # Drive for Desktop streaming mode mounts a virtual drive letter
+    # (usually G:) that contains a "My Drive" folder.
+    for letter in "GHIJKLMNOPQRSTUVWXYZ":
+        candidates.append(FilePath(f"{letter}:/My Drive"))
+        candidates.append(FilePath(f"{letter}:/Google Drive"))
 
-            if my_drive.exists():
-                return my_drive
-
-            return drive
-
-    except OSError:
-        pass
+    for folder in candidates:
+        try:
+            if folder.exists():
+                return folder
+        except OSError:
+            continue
 
     return None
 
 
 def get_gdrive_backup_dir():
-
+    """
+    Where cloud backups should go.
+    Priority: manual path from settings > auto-detected Google Drive > None.
+    """
     config = load_backup_config()
-
-    manual_path = str(
-        config.get("gdrive_path", "")
+    config_path = str(
+        config.get("gdrive_path") or config.get("icloud_path") or ""  # old key kept as fallback
     ).strip()
 
-    if manual_path:
-
-        folder = FilePath(manual_path)
-
-        try:
-            folder.mkdir(
-                parents=True,
-                exist_ok=True
-            )
-            return folder
-        except Exception:
-            pass
+    if config_path:
+        return FilePath(config_path)
 
     detected = find_google_drive()
-
     if detected:
-
-        backup_folder = (
-            detected / GDRIVE_BACKUP_FOLDER_NAME
-        )
-
-        backup_folder.mkdir(
-            parents=True,
-            exist_ok=True
-        )
-
-        return backup_folder
+        return detected / GDRIVE_BACKUP_FOLDER_NAME
 
     return None
 
 
 def create_sqlite_backup(folder):
-
+    """Create a consistent SQLite backup using SQLite's backup API."""
     folder = FilePath(folder)
+    folder.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    target = folder / f"ZERO_backup_{stamp}.db"
 
-    folder.mkdir(
-        parents=True,
-        exist_ok=True
-    )
-
-    stamp = datetime.now().strftime(
-        "%Y-%m-%d_%H-%M-%S"
-    )
-
-    target = (
-        folder /
-        f"ZERO_backup_{stamp}.db"
-    )
-
-    source = sqlite3.connect(
-        DB_NAME,
-        timeout=30
-    )
-
-    destination = sqlite3.connect(
-        str(target)
-    )
-
+    source = sqlite3.connect(DB_NAME, timeout=30)
+    destination = sqlite3.connect(str(target))
     try:
         source.backup(destination)
-
     finally:
         destination.close()
         source.close()
@@ -218,54 +185,26 @@ def create_sqlite_backup(folder):
 
 
 def backup_after_save():
-
-    result = {
-        "local": None,
-        "gdrive": None,
-        "gdrive_error": None
-    }
+    """Local backup + automatic Google Drive backup (detected or configured)."""
+    result = {"local": None, "gdrive": None, "gdrive_error": None}
 
     try:
-
-        result["local"] = create_sqlite_backup(
-            BACKUP_DIR
-        )
-
+        result["local"] = create_sqlite_backup(BACKUP_DIR)
     except Exception as exc:
-
-        result["gdrive_error"] = (
-            f"فشل الـBackup المحلي: {exc}"
-        )
-
+        result["gdrive_error"] = f"فشل الـBackup المحلي: {exc}"
         return result
 
     gdrive_dir = get_gdrive_backup_dir()
-
     if gdrive_dir:
-
         try:
-
-            result["gdrive"] = create_sqlite_backup(
-                gdrive_dir
-            )
-
+            result["gdrive"] = create_sqlite_backup(gdrive_dir)
         except Exception as exc:
-
-            result["gdrive_error"] = (
-                f"فشل Backup Google Drive: {exc}"
-            )
-
-    else:
-
-        result["gdrive_error"] = (
-            "Google Drive (G:) غير متاح حالياً."
-        )
+            result["gdrive_error"] = str(exc)
 
     return result
 
 
 def list_local_backups():
-
     return sorted(
         BACKUP_DIR.glob("ZERO_backup_*.db"),
         key=lambda x: x.stat().st_mtime,
@@ -274,58 +213,31 @@ def list_local_backups():
 
 
 def restore_backup(backup_file):
-
     backup_file = FilePath(backup_file)
-
     if not backup_file.exists():
-        raise FileNotFoundError(
-            "ملف الـBackup غير موجود"
-        )
+        raise FileNotFoundError("ملف الـBackup غير موجود")
 
-    safety_dir = (
-        BACKUP_DIR / "before_restore"
-    )
-
-    safety_dir.mkdir(
-        parents=True,
-        exist_ok=True
-    )
-
+    # Safety backup of current DB before restoring.
+    safety_dir = BACKUP_DIR / "before_restore"
+    safety_dir.mkdir(parents=True, exist_ok=True)
     if FilePath(DB_NAME).exists():
+        create_sqlite_backup(safety_dir)
 
-        create_sqlite_backup(
-            safety_dir
-        )
-
-    test = sqlite3.connect(
-        str(backup_file)
-    )
-
+    test = sqlite3.connect(str(backup_file))
     try:
-
-        integrity = test.execute(
-            "PRAGMA integrity_check"
-        ).fetchone()[0]
-
-        if integrity != "ok":
-            raise ValueError(
-                "النسخة الاحتياطية تالفة"
-            )
-
+        if test.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+            raise ValueError("النسخة الاحتياطية تالفة")
     finally:
         test.close()
 
-    shutil.copy2(
-        backup_file,
-        DB_NAME
-    )
+    shutil.copy2(backup_file, DB_NAME)
 
 
 init_db()
 
 
 # =========================================================
-# CSS
+# CSS / PREMIUM DESIGN
 # =========================================================
 
 def set_custom_design():
@@ -333,7 +245,6 @@ def set_custom_design():
     background_css = ""
 
     if logo_b64:
-
         background_css = f"""
         .stApp::before {{
             content: "";
@@ -344,6 +255,7 @@ def set_custom_design():
             background-position: 20% 30%;
             background-size: min(1000px, 65vw);
             opacity: 0.077;
+            filter: none;
             pointer-events: none;
             z-index: 0;
         }}
@@ -352,6 +264,10 @@ def set_custom_design():
     st.markdown(
         f"""
 <style>
+
+/* =========================================================
+   CORE
+   ========================================================= */
 
 html, body, [class*="css"] {{
     direction: rtl;
@@ -384,6 +300,11 @@ header {{
     background: transparent !important;
 }}
 
+
+/* =========================================================
+   ANIMATIONS
+   ========================================================= */
+
 @keyframes fadeUp {{
     from {{
         opacity: 0;
@@ -404,6 +325,11 @@ header {{
     }}
 }}
 
+@keyframes shimmer {{
+    0% {{ background-position: -500px 0; }}
+    100% {{ background-position: 500px 0; }}
+}}
+
 .fade-up {{
     animation: fadeUp .55s ease both;
 }}
@@ -415,6 +341,11 @@ header {{
 .fade-up-3 {{
     animation: fadeUp .85s ease both;
 }}
+
+
+/* =========================================================
+   SIDEBAR
+   ========================================================= */
 
 section[data-testid="stSidebar"] {{
     background:
@@ -495,6 +426,11 @@ section[data-testid="stSidebar"] * {{
     white-space: pre-wrap;
 }}
 
+
+/* =========================================================
+   HEADER
+   ========================================================= */
+
 .hero {{
     background:
         linear-gradient(110deg, rgba(18,28,45,.92), rgba(8,14,25,.82));
@@ -550,6 +486,11 @@ section[data-testid="stSidebar"] * {{
     box-shadow: 0 0 10px #22c55e;
 }}
 
+
+/* =========================================================
+   STAT CARDS
+   ========================================================= */
+
 .stat-card {{
     background:
         linear-gradient(145deg, rgba(20,31,50,.94), rgba(9,15,26,.92));
@@ -596,6 +537,11 @@ section[data-testid="stSidebar"] * {{
     margin-top: 1px;
 }}
 
+
+/* =========================================================
+   CARDS
+   ========================================================= */
+
 .panel {{
     background:
         linear-gradient(145deg, rgba(17,28,46,.90), rgba(7,13,24,.86));
@@ -626,6 +572,11 @@ section[data-testid="stSidebar"] * {{
     font-weight: 800;
     margin-bottom: 9px;
 }}
+
+
+/* =========================================================
+   INPUTS
+   ========================================================= */
 
 div[data-baseweb="input"] > div,
 div[data-baseweb="textarea"] > div,
@@ -658,6 +609,11 @@ label {{
     font-weight: 600 !important;
 }}
 
+
+/* =========================================================
+   BUTTONS
+   ========================================================= */
+
 .stButton > button,
 .stFormSubmitButton > button {{
     border: 0 !important;
@@ -676,19 +632,39 @@ label {{
     box-shadow: 0 12px 28px rgba(226,27,43,.28);
 }}
 
+
+/* =========================================================
+   DATAFRAME
+   ========================================================= */
+
 [data-testid="stDataFrame"] {{
     border: 1px solid rgba(148,163,184,.15);
     border-radius: 14px;
     overflow: hidden;
 }}
 
+
+/* =========================================================
+   MESSAGES
+   ========================================================= */
+
 div[data-testid="stAlert"] {{
     border-radius: 11px;
 }}
 
+
+/* =========================================================
+   DIVIDER
+   ========================================================= */
+
 hr {{
     border-color: rgba(148,163,184,.10) !important;
 }}
+
+
+/* =========================================================
+   FOOTER
+   ========================================================= */
 
 .footer {{
     text-align: center;
@@ -715,21 +691,14 @@ set_custom_design()
 # =========================================================
 
 def calculate_payment(total, deposit):
-
     if total > 0 and deposit >= total:
         return "تم الدفع بالكامل"
-
     if deposit > 0:
-        return (
-            f"تم دفع عربون — المتبقي: "
-            f"{total - deposit:,.2f} ج"
-        )
-
+        return f"تم دفع عربون — المتبقي: {total - deposit:,.2f} ج"
     return "لم يدفع"
 
 
 def get_statistics():
-
     conn = get_connection()
 
     df = pd.read_sql_query(
@@ -744,78 +713,52 @@ def get_statistics():
 
     return (
         len(df),
-        int(
-            (df["order_status"] == "تم التسليم").sum()
-        ),
-        int(
-            (df["order_status"] == "قيد التنفيذ").sum()
-        ),
-        float(
-            df["total_cost"].fillna(0).sum()
-        ),
+        int((df["order_status"] == "تم التسليم").sum()),
+        int((df["order_status"] == "قيد التنفيذ").sum()),
+        float(df["total_cost"].fillna(0).sum()),
     )
 
 
 def get_today_note():
-
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute(
-        """
-        SELECT note_text
-        FROM daily_notes
-        WHERE note_date = ?
-        """,
+        "SELECT note_text FROM daily_notes WHERE note_date = ?",
         (date.today().isoformat(),)
     )
 
     row = cursor.fetchone()
-
     conn.close()
 
     return row[0] if row else ""
 
 
 def save_today_note(note_text):
-
     conn = get_connection()
     cursor = conn.cursor()
 
     today = date.today().isoformat()
 
-    cursor.execute(
-        """
-        INSERT INTO daily_notes
-        (
-            note_date,
-            note_text,
-            updated_at
-        )
+    cursor.execute("""
+        INSERT INTO daily_notes (note_date, note_text, updated_at)
         VALUES (?, ?, CURRENT_TIMESTAMP)
-
         ON CONFLICT(note_date)
-
         DO UPDATE SET
             note_text = excluded.note_text,
             updated_at = CURRENT_TIMESTAMP
-        """,
-        (today, note_text)
-    )
+    """, (today, note_text))
 
     conn.commit()
     conn.close()
 
 
 def get_recent_notes(limit=5):
-
     conn = get_connection()
 
     df = pd.read_sql_query(
         """
-        SELECT
-            note_date,
-            note_text
+        SELECT note_date, note_text
         FROM daily_notes
         WHERE TRIM(note_text) <> ''
         ORDER BY note_date DESC
@@ -826,7 +769,6 @@ def get_recent_notes(limit=5):
     )
 
     conn.close()
-
     return df
 
 
@@ -837,15 +779,12 @@ def get_recent_notes(limit=5):
 with st.sidebar:
 
     if logo_b64:
-
         st.markdown(
             f"""
             <div class="brand-box">
                 <img class="brand-logo"
                      src="data:image/jpeg;base64,{logo_b64}">
-                <div class="brand-name">
-                    ZERO PLUS
-                </div>
+                <div class="brand-name">ZERO PLUS</div>
                 <div class="brand-caption">
                     PRINT • DESIGN • ADVERTISING
                 </div>
@@ -877,43 +816,32 @@ with st.sidebar:
 
     st.divider()
 
+    # Small preview of today's note
     today_note = get_today_note()
 
+
     if today_note:
-
         preview = today_note[:150]
-
         if len(today_note) > 150:
             preview += "..."
 
         st.markdown(
             f"""
             <div class="side-note">
-                <div class="side-note-title">
-                    📌 Today note
-                </div>
-
+                <div class="side-note-title">📌 Today note</div>
                 <div class="side-note-date">
                     {date.today().strftime("%Y-%m-%d")}
                 </div>
-
-                <div class="side-note-text">
-                    {preview}
-                </div>
+                <div class="side-note-text">{preview}</div>
             </div>
             """,
             unsafe_allow_html=True
         )
-
     else:
-
         st.markdown(
             """
             <div class="side-note">
-                <div class="side-note-title">
-                    📌 مفيش ملاحظات
-                </div>
-
+                <div class="side-note-title">📌 مفيش ملاحظات</div>
                 <div class="side-note-date">
                     اكتب ملاحظة من قسم المفكرة اليومية
                 </div>
@@ -924,43 +852,22 @@ with st.sidebar:
 
 
 # =========================================================
-# HEADER
+# TOP HEADER
 # =========================================================
 
-today_text = date.today().strftime(
-    "%Y-%m-%d"
-)
-
-time_text = datetime.now().strftime(
-    "%I:%M %p"
-)
+today_text = date.today().strftime("%Y-%m-%d")
+time_text = datetime.now().strftime("%I:%M %p")
 
 st.markdown(
     f"""
     <div class="hero">
-
-        <div style="
-            display:flex;
-            justify-content:space-between;
-            align-items:center;
-            gap:20px;
-            direction:ltr
-        ">
-
+        <div style="display:flex;justify-content:space-between;
+                    align-items:center;gap:20px;direction:ltr">
             <div>
-
-                <div class="hero-title">
-                    ZERO Advertising | Management System
-                </div>
-
-                <div class="verybig-title">
-                    {today_text}
-                </div>
-
+                <div class="hero-title">ZERO Advertising | Management System</div>
+                <div class="verybig-title">{today_text}</div>
             </div>
-
         </div>
-
     </div>
     """,
     unsafe_allow_html=True
@@ -968,12 +875,10 @@ st.markdown(
 
 
 # =========================================================
-# DASHBOARD
+# DASHBOARD STATS
 # =========================================================
 
-total_orders, completed, in_progress, total_sales = (
-    get_statistics()
-)
+total_orders, completed, in_progress, total_sales = get_statistics()
 
 c1, c2, c3, c4 = st.columns(4)
 
@@ -981,45 +886,23 @@ stats = [
     ("📦", "إجمالي الطلبات", total_orders),
     ("🚀", "طلبات قيد التنفيذ", in_progress),
     ("✅", "تم التسليم", completed),
-    (
-        "💰",
-        "إجمالي قيمة الطلبات",
-        f"{total_sales:,.0f} ج"
-    ),
+    ("💰", "إجمالي قيمة الطلبات", f"{total_sales:,.0f} ج"),
 ]
 
-for col, (icon, title, value) in zip(
-    [c1, c2, c3, c4],
-    stats
-):
-
+for col, (icon, title, value) in zip([c1, c2, c3, c4], stats):
     with col:
-
         st.markdown(
             f"""
             <div class="stat-card">
-
-                <div class="stat-icon">
-                    {icon}
-                </div>
-
-                <div class="stat-title">
-                    {title}
-                </div>
-
-                <div class="stat-value">
-                    {value}
-                </div>
-
+                <div class="stat-icon">{icon}</div>
+                <div class="stat-title">{title}</div>
+                <div class="stat-value">{value}</div>
             </div>
             """,
             unsafe_allow_html=True
         )
 
-st.markdown(
-    "<br>",
-    unsafe_allow_html=True
-)
+st.markdown("<br>", unsafe_allow_html=True)
 
 
 # =========================================================
@@ -1031,10 +914,7 @@ if choice == "➕  تسجيل طلب جديد":
     st.markdown(
         """
         <div class="panel">
-            <div class="panel-title">
-                📝 تسجيل طلب جديد
-            </div>
-
+            <div class="panel-title">📝 تسجيل طلب جديد</div>
             <div class="panel-sub">
                 أضف بيانات العميل والطلب والتكلفة وحالة التنفيذ.
             </div>
@@ -1043,10 +923,7 @@ if choice == "➕  تسجيل طلب جديد":
         unsafe_allow_html=True
     )
 
-    with st.form(
-        "add_order_form",
-        clear_on_submit=True
-    ):
+    with st.form("add_order_form", clear_on_submit=True):
 
         col1, col2, col3 = st.columns(3)
 
@@ -1063,64 +940,47 @@ if choice == "➕  تسجيل طلب جديد":
             )
 
         with col2:
-
+            
             order_details = st.text_area(
                 "تفاصيل الطلب *",
-                placeholder=(
-                    "مثال: 500 فلاير — مقاس A5 — "
-                    "وجهين — ألوان..."
-                ),
+                placeholder="مثال: 500 فلاير — مقاس A5 — وجهين — ألوان...",
                 height=155
             )
 
         with col3:
+            
+
 
             total_cost = st.number_input(
                 "التكلفة الإجمالية (جنيه)",
                 min_value=0.0,
                 step=0.0,
-                format="%.0f"
+                 format="%.0f"
             )
 
             deposit = st.number_input(
                 "المبلغ المدفوع / العربون",
                 min_value=0.0,
-                step=0.0
+                step=0.0,
+ 
             )
 
             order_status = st.selectbox(
                 "حالة الطلب",
-                [
-                    "قيد التنفيذ",
-                    "جاهز للتسليم",
-                    "تم التسليم"
-                ]
+                ["قيد التنفيذ", "جاهز للتسليم", "تم التسليم"]
             )
 
         st.divider()
 
         if total_cost > 0:
-
             remaining = total_cost - deposit
 
             if deposit > total_cost:
-
-                st.warning(
-                    "⚠️ العربون أكبر من إجمالي قيمة الطلب."
-                )
-
+                st.warning("⚠️ العربون أكبر من إجمالي قيمة الطلب.")
             elif remaining > 0:
-
-                st.info(
-                    f"💳 المتبقي على العميل: "
-                    f"{remaining:,.2f} جنيه"
-                )
-
+                st.info(f"💳 المتبقي على العميل: {remaining:,.2f} جنيه")
             else:
-
-                st.success(
-                    "✅ تم دفع قيمة الطلب بالكامل."
-                )
+                st.success("✅ تم دفع قيمة الطلب بالكامل.")
 
         save = st.form_submit_button(
             "💾  حفظ الطلب",
@@ -1130,26 +990,13 @@ if choice == "➕  تسجيل طلب جديد":
         if save:
 
             if not customer_name.strip():
-
-                st.error(
-                    "❌ اكتب اسم العميل."
-                )
+                st.error("❌ اكتب اسم العميل.")
 
             elif not order_details.strip():
+                st.error("❌ اكتب تفاصيل الطلب.")
 
-                st.error(
-                    "❌ اكتب تفاصيل الطلب."
-                )
-
-            elif (
-                deposit > total_cost
-                and total_cost > 0
-            ):
-
-                st.error(
-                    "❌ العربون لا يمكن أن يكون أكبر "
-                    "من إجمالي الطلب."
-                )
+            elif deposit > total_cost and total_cost > 0:
+                st.error("❌ العربون لا يمكن أن يكون أكبر من إجمالي الطلب.")
 
             else:
 
@@ -1163,11 +1010,7 @@ if choice == "➕  تسجيل طلب جديد":
 
                 cursor.execute(
                     """
-                    INSERT INTO customers
-                    (
-                        name,
-                        phone
-                    )
+                    INSERT INTO customers (name, phone)
                     VALUES (?, ?)
                     """,
                     (
@@ -1207,21 +1050,11 @@ if choice == "➕  تسجيل طلب جديد":
                 backup_result = backup_after_save()
 
                 st.success(
-                    f"✅ تم حفظ طلب العميل "
-                    f"«{customer_name}» بنجاح."
+                    f"✅ تم حفظ طلب العميل «{customer_name}» بنجاح."
                 )
-
-                if backup_result["gdrive"]:
-
-                    st.info(
-                        "☁️ تم إنشاء نسخة على Google Drive."
-                    )
-
                 if backup_result["gdrive_error"]:
-
                     st.warning(
-                        "⚠️ الداتا اتحفظت محليًا، "
-                        "لكن حصلت مشكلة في الـBackup: "
+                        "⚠️ الداتا اتحفظت، لكن حصلت مشكلة في الـBackup: "
                         + backup_result["gdrive_error"]
                     )
 
@@ -1235,10 +1068,7 @@ elif choice == "📋  عرض واستعلام الطلبات":
     st.markdown(
         """
         <div class="panel">
-            <div class="panel-title">
-                📋 الطلبات المسجلة
-            </div>
-
+            <div class="panel-title">📋 الطلبات المسجلة</div>
             <div class="panel-sub">
                 ابحث عن العملاء واستعرض جميع الطلبات والحسابات.
             </div>
@@ -1272,26 +1102,19 @@ elif choice == "📋  عرض واستعلام الطلبات":
     conn.close()
 
     if df.empty:
-
-        st.info(
-            "📭 لا توجد طلبات مسجلة حالياً."
-        )
+        st.info("📭 لا توجد طلبات مسجلة حالياً.")
 
     else:
 
-        search_col, filter_col = st.columns(
-            [2, 1]
-        )
+        search_col, filter_col = st.columns([2, 1])
 
         with search_col:
-
             search_name = st.text_input(
                 "🔍 البحث",
                 placeholder="ابحث باسم العميل..."
             )
 
         with filter_col:
-
             status_filter = st.selectbox(
                 "📌 حالة الطلب",
                 [
@@ -1303,7 +1126,6 @@ elif choice == "📋  عرض واستعلام الطلبات":
             )
 
         if search_name:
-
             df = df[
                 df["اسم العميل"].str.contains(
                     search_name,
@@ -1313,10 +1135,7 @@ elif choice == "📋  عرض واستعلام الطلبات":
             ]
 
         if status_filter != "الكل":
-
-            df = df[
-                df["حالة الطلب"] == status_filter
-            ]
+            df = df[df["حالة الطلب"] == status_filter]
 
         st.dataframe(
             df,
@@ -1324,21 +1143,16 @@ elif choice == "📋  عرض واستعلام الطلبات":
             hide_index=True,
             height=520,
             column_config={
-                "الإجمالي":
-                    st.column_config.NumberColumn(
-                        format="%.2f ج"
-                    ),
-
-                "العربون":
-                    st.column_config.NumberColumn(
-                        format="%.2f ج"
-                    ),
+                "الإجمالي": st.column_config.NumberColumn(
+                    format="%.2f ج"
+                ),
+                "العربون": st.column_config.NumberColumn(
+                    format="%.2f ج"
+                ),
             }
         )
 
-        st.caption(
-            f"عدد النتائج: {len(df)}"
-        )
+        st.caption(f"عدد النتائج: {len(df)}")
 
 
 # =========================================================
@@ -1350,10 +1164,7 @@ elif choice == "⚙️  تحديث حالة طلب":
     st.markdown(
         """
         <div class="panel">
-            <div class="panel-title">
-                ⚙️ تحديث حالة طلب
-            </div>
-
+            <div class="panel-title">⚙️ تحديث حالة طلب</div>
             <div class="panel-sub">
                 عدّل العربون وحالة التنفيذ وسيتم تحديث حالة الدفع تلقائياً.
             </div>
@@ -1367,9 +1178,7 @@ elif choice == "⚙️  تحديث حالة طلب":
 
     cursor.execute(
         """
-        SELECT
-            o.order_id,
-            c.name
+        SELECT o.order_id, c.name
         FROM orders o
         JOIN customers c
             ON o.customer_id = c.customer_id
@@ -1381,15 +1190,12 @@ elif choice == "⚙️  تحديث حالة طلب":
 
     if not orders:
 
-        st.info(
-            "📭 لا توجد طلبات لتعديلها."
-        )
+        st.info("📭 لا توجد طلبات لتعديلها.")
 
     else:
 
         options = {
-            f"طلب #{order_id} — {name}":
-                order_id
+            f"طلب #{order_id} — {name}": order_id
             for order_id, name in orders
         }
 
@@ -1398,9 +1204,7 @@ elif choice == "⚙️  تحديث حالة طلب":
             list(options.keys())
         )
 
-        selected_id = options[
-            selected_label
-        ]
+        selected_id = options[selected_label]
 
         cursor.execute(
             """
@@ -1424,74 +1228,45 @@ elif choice == "⚙️  تحديث حالة طلب":
             st.markdown(
                 """
                 <div class="panel">
-                    <div class="panel-title">
-                        💰 الحساب
-                    </div>
+                    <div class="panel-title">💰 الحساب</div>
                 </div>
                 """,
                 unsafe_allow_html=True
             )
 
-            total_cost = float(
-                current[0] or 0
-            )
+            total_cost = float(current[0] or 0)
 
             new_deposit = st.number_input(
                 "المبلغ المدفوع",
                 min_value=0.0,
-                value=float(
-                    current[1] or 0
-                ),
+                value=float(current[1] or 0),
                 step=10.0
             )
 
-            remaining = (
-                total_cost -
-                new_deposit
-            )
+            remaining = total_cost - new_deposit
 
-            if (
-                new_deposit > total_cost
-                and total_cost > 0
-            ):
-
-                st.error(
-                    "❌ المبلغ المدفوع أكبر "
-                    "من قيمة الطلب."
-                )
-
+            if new_deposit > total_cost and total_cost > 0:
+                st.error("❌ المبلغ المدفوع أكبر من قيمة الطلب.")
                 new_payment_status = current[2]
-
             else:
-
-                new_payment_status = (
-                    calculate_payment(
-                        total_cost,
-                        new_deposit
-                    )
+                new_payment_status = calculate_payment(
+                    total_cost,
+                    new_deposit
                 )
 
                 if remaining > 0:
-
                     st.info(
-                        f"المتبقي: "
-                        f"{remaining:,.2f} جنيه"
+                        f"المتبقي: {remaining:,.2f} جنيه"
                     )
-
                 elif total_cost > 0:
-
-                    st.success(
-                        "✅ تم دفع الطلب بالكامل."
-                    )
+                    st.success("✅ تم دفع الطلب بالكامل.")
 
         with col2:
 
             st.markdown(
                 """
                 <div class="panel">
-                    <div class="panel-title">
-                        📦 التنفيذ
-                    </div>
+                    <div class="panel-title">📦 التنفيذ</div>
                 </div>
                 """,
                 unsafe_allow_html=True
@@ -1504,16 +1279,13 @@ elif choice == "⚙️  تحديث حالة طلب":
             ]
 
             current_status = current[3]
-
             if current_status not in statuses:
                 current_status = statuses[0]
 
             new_order_status = st.selectbox(
                 "حالة الطلب الجديدة",
                 statuses,
-                index=statuses.index(
-                    current_status
-                )
+                index=statuses.index(current_status)
             )
 
         if st.button(
@@ -1521,15 +1293,8 @@ elif choice == "⚙️  تحديث حالة طلب":
             use_container_width=True
         ):
 
-            if (
-                new_deposit > total_cost
-                and total_cost > 0
-            ):
-
-                st.error(
-                    "❌ لا يمكن دفع مبلغ أكبر "
-                    "من قيمة الطلب."
-                )
+            if new_deposit > total_cost and total_cost > 0:
+                st.error("❌ لا يمكن دفع مبلغ أكبر من قيمة الطلب.")
 
             else:
 
@@ -1553,34 +1318,17 @@ elif choice == "⚙️  تحديث حالة طلب":
                 conn.commit()
                 conn.close()
 
-                backup_result = (
-                    backup_after_save()
-                )
+                backup_result = backup_after_save()
 
-                st.success(
-                    "✅ تم تحديث الطلب بنجاح."
-                )
-
-                if backup_result["gdrive"]:
-
-                    st.info(
-                        "☁️ تم تحديث نسخة Google Drive."
-                    )
-
+                st.success("✅ تم تحديث الطلب بنجاح.")
                 if backup_result["gdrive_error"]:
-
                     st.warning(
-                        "⚠️ التحديث اتحفظ، "
-                        "لكن حصلت مشكلة في الـBackup: "
+                        "⚠️ التحديث اتحفظ، لكن حصلت مشكلة في الـBackup: "
                         + backup_result["gdrive_error"]
                     )
-
                 st.rerun()
 
-    try:
-        conn.close()
-    except Exception:
-        pass
+    conn.close()
 
 
 # =========================================================
@@ -1592,10 +1340,7 @@ elif choice == "📝  المفكرة اليومية":
     st.markdown(
         """
         <div class="panel">
-            <div class="panel-title">
-                📝 المفكرة اليومية
-            </div>
-
+            <div class="panel-title">📝 المفكرة اليومية</div>
             <div class="panel-sub">
                 اكتب أي ملاحظات أو مهام أو تعليمات خاصة بالمطبعة.
                 كل يوم له ملاحظة مستقلة بالتاريخ.
@@ -1611,10 +1356,7 @@ elif choice == "📝  المفكرة اليومية":
     st.markdown(
         f"""
         <div class="panel">
-            <div class="panel-title">
-                📌 ملاحظة يوم {today_iso}
-            </div>
-
+            <div class="panel-title">📌 ملاحظة يوم {today_iso}</div>
             <div class="panel-sub">
                 أي كلام تكتبه هنا يتم حفظه لهذا اليوم فقط ويمكن تعديله لاحقاً.
             </div>
@@ -1643,38 +1385,21 @@ elif choice == "📝  المفكرة اليومية":
         use_container_width=True
     ):
 
-        save_today_note(
-            note.strip()
-        )
-
-        backup_result = (
-            backup_after_save()
-        )
+        save_today_note(note.strip())
+        backup_result = backup_after_save()
 
         st.success(
             f"✅ تم حفظ ملاحظة يوم {today_iso}."
         )
-
-        if backup_result["gdrive"]:
-
-            st.info(
-                "☁️ تم حفظ نسخة Google Drive."
-            )
-
         if backup_result["gdrive_error"]:
-
             st.warning(
-                "⚠️ الملاحظة اتحفظت محليًا، "
-                "لكن حصلت مشكلة في الـBackup: "
+                "⚠️ الملاحظة اتحفظت، لكن حصلت مشكلة في الـBackup: "
                 + backup_result["gdrive_error"]
             )
 
         st.rerun()
 
-    st.markdown(
-        "<br>",
-        unsafe_allow_html=True
-    )
+    st.markdown("<br>", unsafe_allow_html=True)
 
     recent = get_recent_notes(10)
 
@@ -1683,10 +1408,7 @@ elif choice == "📝  المفكرة اليومية":
         st.markdown(
             """
             <div class="panel">
-                <div class="panel-title">
-                    🗓️ الملاحظات السابقة
-                </div>
-
+                <div class="panel-title">🗓️ الملاحظات السابقة</div>
                 <div class="panel-sub">
                     آخر 10 أيام تم تسجيل ملاحظات بها.
                 </div>
@@ -1700,14 +1422,11 @@ elif choice == "📝  المفكرة اليومية":
             with st.expander(
                 f"📅 {row['note_date']}"
             ):
-
-                st.write(
-                    row["note_text"]
-                )
+                st.write(row["note_text"])
 
 
 # =========================================================
-# 5. BACKUPS
+# 5. BACKUPS / GOOGLE DRIVE
 # =========================================================
 
 elif choice == "💾  النسخ الاحتياطية":
@@ -1715,32 +1434,28 @@ elif choice == "💾  النسخ الاحتياطية":
     st.markdown(
         """
         <div class="panel">
-            <div class="panel-title">
-                💾 حماية البيانات
-            </div>
-
+            <div class="panel-title">💾 حماية البيانات</div>
             <div class="panel-sub">
-                الداتا الأساسية محفوظة محلياً، وكل عملية حفظ تعمل
-                Backup محلي + Google Drive تلقائياً.
+                الداتا الأساسية محفوظة في SQLite على الجهاز، وكل عملية حفظ ناجحة
+                تعمل Backup تلقائي محلي + نسخة على Google Drive بدون أي تدخل منك.
             </div>
         </div>
         """,
         unsafe_allow_html=True
     )
 
-    active_gdrive_dir = (
-        get_gdrive_backup_dir()
-    )
+    config = load_backup_config()
+    current_gdrive = str(config.get("gdrive_path", "")).strip()
+    detected_drive = find_google_drive()
+    active_gdrive_dir = get_gdrive_backup_dir()
 
     st.markdown(
         """
         <div class="panel">
-            <div class="panel-title">
-                ☁️ حالة Google Drive
-            </div>
-
+            <div class="panel-title">☁️ حالة Google Drive</div>
             <div class="panel-sub">
-                Google Drive يتم اكتشافه تلقائياً من G:.
+                النظام بيكتشف Google Drive تلقائياً — مفيش أي مسار محتاج تكتبه.
+                كل عملية حفظ بتعمل نسخة هناك من غير أي تدخل منك.
             </div>
         </div>
         """,
@@ -1748,122 +1463,65 @@ elif choice == "💾  النسخ الاحتياطية":
     )
 
     if active_gdrive_dir:
-
         st.success(
-            f"☁️ Google Drive متصل — "
-            f"النسخ بتروح على:\n\n"
-            f"`{active_gdrive_dir}`"
+            f"☁️ Google Drive متصل تلقائياً — النسخ بتروح على:\n\n`{active_gdrive_dir}`"
         )
-
     else:
-
         st.warning(
-            "⚠️ Google Drive (G:) غير متاح حالياً.\n\n"
-            "النسخ المحلية شغالة عادي."
+            "⚠️ Google Drive مش متعرف عليه على الجهاز ده حالياً.\n\n"
+            "النسخ المحلية شغالة عادي.\n\n"
+            "عشان تفعل الاتصال التلقائي: ثبّت برنامج Google Drive for Desktop (مجاني)، "
+            "سجل دخول بأي Gmail، وافتح Google Drive مرة واحدة على الأقل. "
+            "بعدها افتح الصفحة دي تاني وهتلاقيه متصل لوحده."
         )
 
-    if st.button(
-        "💾 عمل Backup الآن",
-        use_container_width=True
-    ):
+    with st.expander("⚙️ تخصيص مسار يدوي (اختياري — سيبه فاضي للتشغيل التلقائي)"):
+        gdrive_path = st.text_input(
+            "مسار مخصص بدل الاكتشاف التلقائي",
+            value=current_gdrive,
+            placeholder="سيبه فاضي = تشغيل تلقائي",
+            help="لو عايز فولدر معين غير اللي النظام بيكتشفه لوحده، اكتبه هنا. فاضي = تلقائي."
+        )
+        if st.button("☁️ حفظ الإعداد", use_container_width=True):
+            save_backup_config(gdrive_path.strip())
+            st.success("✅ تم حفظ الإعداد.")
+            st.rerun()
 
+    if st.button("💾 عمل Backup الآن", use_container_width=True):
         result = backup_after_save()
-
         if result["local"]:
-
-            st.success(
-                f"✅ Local Backup: "
-                f"{result['local'].name}"
-            )
-
+            st.success(f"✅ Local Backup: {result['local'].name}")
         if result["gdrive"]:
-
-            st.success(
-                f"☁️ Google Drive Backup: "
-                f"{result['gdrive'].name}"
-            )
-
+            st.success(f"☁️ Google Drive Backup: {result['gdrive'].name}")
         if result["gdrive_error"]:
+            st.warning(result["gdrive_error"])
 
-            st.warning(
-                result["gdrive_error"]
-            )
-
-    st.markdown(
-        "<br>",
-        unsafe_allow_html=True
-    )
+    st.markdown("<br>", unsafe_allow_html=True)
 
     backups = list_local_backups()
-
     st.markdown(
-        f"""
-        <div class="panel">
-            <div class="panel-title">
-                🖥️ النسخ المحلية
-            </div>
-
-            <div class="panel-sub">
-                عدد النسخ الحالية: {len(backups)}
-            </div>
-        </div>
-        """,
+        f"""<div class="panel"><div class="panel-title">🖥️ النسخ المحلية</div>
+        <div class="panel-sub">عدد النسخ الحالية: {len(backups)}</div></div>""",
         unsafe_allow_html=True
     )
 
     if backups:
-
         labels = {
-            (
-                f"{p.name} — "
-                f"{datetime.fromtimestamp(p.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')}"
-            ):
-                str(p)
-
+            f"{p.name} — {datetime.fromtimestamp(p.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')}": str(p)
             for p in backups
         }
+        selected_label = st.selectbox("اختر نسخة للاسترجاع", list(labels.keys()))
+        selected_file = labels[selected_label]
 
-        selected_label = st.selectbox(
-            "اختر نسخة للاسترجاع",
-            list(labels.keys())
-        )
-
-        selected_file = labels[
-            selected_label
-        ]
-
-        st.warning(
-            "⚠️ الاسترجاع يستبدل الداتا الحالية. "
-            "قبل الاسترجاع سيتم إنشاء نسخة أمان تلقائياً."
-        )
-
-        if st.button(
-            "🔄 استرجاع النسخة المختارة",
-            use_container_width=True
-        ):
-
+        st.warning("⚠️ الاسترجاع يستبدل الداتا الحالية. قبل الاسترجاع سيتم إنشاء نسخة أمان تلقائياً.")
+        if st.button("🔄 استرجاع النسخة المختارة", use_container_width=True):
             try:
-
-                restore_backup(
-                    selected_file
-                )
-
-                st.success(
-                    "✅ تم الاسترجاع بنجاح. "
-                    "اعمل Refresh للتطبيق."
-                )
-
+                restore_backup(selected_file)
+                st.success("✅ تم الاسترجاع بنجاح. اعمل Refresh للتطبيق.")
             except Exception as exc:
-
-                st.error(
-                    f"❌ فشل الاسترجاع: {exc}"
-                )
-
+                st.error(f"❌ فشل الاسترجاع: {exc}")
     else:
-
-        st.info(
-            "📭 أول عملية حفظ ستنشئ أول Backup تلقائياً."
-        )
+        st.info("📭 أول عملية حفظ ستنشئ أول Backup تلقائياً.")
 
 
 # =========================================================
@@ -1873,15 +1531,9 @@ elif choice == "💾  النسخ الاحتياطية":
 st.markdown(
     """
     <div class="footer">
-
         ZERO Advertising Management System
-
         <br>
-
-        <strong>
-            PRINT • DESIGN • ADVERTISING
-        </strong>
-
+        <strong>PRINT • DESIGN • ADVERTISING</strong>
     </div>
     """,
     unsafe_allow_html=True
