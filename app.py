@@ -1546,6 +1546,10 @@ elif choice == "📝  المفكرة اليومية":
 # 5. BACKUPS / GOOGLE DRIVE
 # =========================================================
 
+# =========================================================
+# 5. BACKUPS / GOOGLE DRIVE
+# =========================================================
+
 elif choice == "💾  النسخ الاحتياطية":
 
     st.markdown(
@@ -1553,93 +1557,285 @@ elif choice == "💾  النسخ الاحتياطية":
         <div class="panel">
             <div class="panel-title">💾 حماية البيانات</div>
             <div class="panel-sub">
-                الداتا الأساسية محفوظة في SQLite على الجهاز، وكل عملية حفظ ناجحة
-                تعمل Backup تلقائي محلي + نسخة على Google Drive بدون أي تدخل منك.
+                قاعدة البيانات الأساسية محفوظة على الجهاز،
+                ويتم نسخها تلقائياً إلى Google Drive.
             </div>
         </div>
         """,
         unsafe_allow_html=True
     )
 
-    config = load_backup_config()
-    current_gdrive = str(config.get("gdrive_path", "")).strip()
-    detected_drive = find_google_drive()
-    active_gdrive_dir = get_gdrive_backup_dir()
+    # =====================================================
+    # GOOGLE DRIVE STATUS
+    # =====================================================
 
     st.markdown(
         """
         <div class="panel">
-            <div class="panel-title">☁️ حالة Google Drive</div>
+            <div class="panel-title">☁️ Google Drive</div>
             <div class="panel-sub">
-                النظام بيكتشف Google Drive تلقائياً — مفيش أي مسار محتاج تكتبه.
-                كل عملية حفظ بتعمل نسخة هناك من غير أي تدخل منك.
+                النظام يحاول العثور على Google Drive تلقائياً.
+                عند العثور عليه سيتم حفظ نسخة قاعدة البيانات داخله.
             </div>
         </div>
         """,
         unsafe_allow_html=True
     )
 
-    if active_gdrive_dir:
+    gdrive_dir = get_gdrive_data_dir()
+
+    if gdrive_dir:
+
         st.success(
-            f"☁️ Google Drive متصل تلقائياً — النسخ بتروح على:\n\n`{active_gdrive_dir}`"
+            "☁️ Google Drive متصل بنجاح.\n\n"
+            f"مكان حفظ الداتا:\n\n`{gdrive_dir}`"
         )
+
+        # =================================================
+        # CURRENT DATABASE STATUS
+        # =================================================
+
+        db_file = FilePath(DB_NAME)
+
+        if db_file.exists():
+
+            db_size = db_file.stat().st_size / 1024
+
+            st.info(
+                f"📦 قاعدة البيانات الحالية: "
+                f"`{DB_NAME}`\n\n"
+                f"الحجم: {db_size:.1f} KB"
+            )
+
+        # =================================================
+        # MANUAL SYNC
+        # =================================================
+
+        if st.button(
+            "☁️ مزامنة الداتا مع Google Drive الآن",
+            use_container_width=True
+        ):
+
+            try:
+
+                result = sync_database_to_google_drive()
+
+                if result["success"]:
+
+                    st.success(
+                        "✅ تم رفع أحدث نسخة من الداتا "
+                        "إلى Google Drive بنجاح."
+                    )
+
+                    st.caption(
+                        f"📁 الملف: `{result['path']}`"
+                    )
+
+                else:
+
+                    st.error(
+                        "❌ فشل رفع الداتا إلى Google Drive:\n\n"
+                        + str(result["error"])
+                    )
+
+            except Exception as exc:
+
+                st.error(
+                    "❌ حصل خطأ أثناء المزامنة:\n\n"
+                    + str(exc)
+                )
+
     else:
+
         st.warning(
-            "⚠️ Google Drive مش متعرف عليه على الجهاز ده حالياً.\n\n"
-            "النسخ المحلية شغالة عادي.\n\n"
-            "عشان تفعل الاتصال التلقائي: ثبّت برنامج Google Drive for Desktop (مجاني)، "
-            "سجل دخول بأي Gmail، وافتح Google Drive مرة واحدة على الأقل. "
-            "بعدها افتح الصفحة دي تاني وهتلاقيه متصل لوحده."
+            "⚠️ Google Drive غير متصل حالياً."
         )
 
-    with st.expander("⚙️ تخصيص مسار يدوي (اختياري — سيبه فاضي للتشغيل التلقائي)"):
-        gdrive_path = st.text_input(
-            "مسار مخصص بدل الاكتشاف التلقائي",
-            value=current_gdrive,
-            placeholder="سيبه فاضي = تشغيل تلقائي",
-            help="لو عايز فولدر معين غير اللي النظام بيكتشفه لوحده، اكتبه هنا. فاضي = تلقائي."
+        st.info(
+            "تأكد أن Google Drive for Desktop شغال "
+            "وأن Google Drive ظاهر في This PC."
         )
-        if st.button("☁️ حفظ الإعداد", use_container_width=True):
-            save_backup_config(gdrive_path.strip())
-            st.success("✅ تم حفظ الإعداد.")
-            st.rerun()
 
-    if st.button("💾 عمل Backup الآن", use_container_width=True):
-        result = backup_after_save()
-        if result["local"]:
-            st.success(f"✅ Local Backup: {result['local'].name}")
-        if result["gdrive"]:
-            st.success(f"☁️ Google Drive Backup: {result['gdrive'].name}")
-        if result["gdrive_error"]:
-            st.warning(result["gdrive_error"])
+    # =====================================================
+    # MANUAL GOOGLE DRIVE PATH
+    # =====================================================
+
+    with st.expander(
+        "⚙️ تحديد مكان Google Drive يدوياً"
+    ):
+
+        config = load_backup_config()
+
+        current_path = str(
+            config.get("gdrive_path", "")
+        ).strip()
+
+        manual_path = st.text_input(
+            "مسار Google Drive",
+            value=current_path,
+            placeholder="مثال: G:\\My Drive",
+            help=(
+                "اكتب مسار My Drive الموجود عندك في This PC. "
+                "مثال: G:\\My Drive"
+            )
+        )
+
+        col_save, col_clear = st.columns(2)
+
+        with col_save:
+
+            if st.button(
+                "💾 حفظ المسار",
+                use_container_width=True
+            ):
+
+                try:
+
+                    clean_path = manual_path.strip()
+
+                    if clean_path:
+
+                        test_folder = FilePath(clean_path)
+
+                        if not test_folder.exists():
+
+                            st.error(
+                                "❌ المسار ده مش موجود على الجهاز."
+                            )
+
+                        else:
+
+                            save_backup_config(
+                                clean_path
+                            )
+
+                            st.success(
+                                "✅ تم حفظ مسار Google Drive."
+                            )
+
+                            st.rerun()
+
+                    else:
+
+                        save_backup_config("")
+
+                        st.success(
+                            "✅ تم إلغاء المسار اليدوي "
+                            "والرجوع للاكتشاف التلقائي."
+                        )
+
+                        st.rerun()
+
+                except Exception as exc:
+
+                    st.error(
+                        "❌ حصل خطأ:\n\n"
+                        + str(exc)
+                    )
+
+        with col_clear:
+
+            if st.button(
+                "🗑️ إلغاء المسار اليدوي",
+                use_container_width=True
+            ):
+
+                save_backup_config("")
+
+                st.success(
+                    "✅ تم إلغاء المسار اليدوي."
+                )
+
+                st.rerun()
+
+    # =====================================================
+    # RESTORE DATABASE
+    # =====================================================
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    backups = list_local_backups()
     st.markdown(
-        f"""<div class="panel"><div class="panel-title">🖥️ النسخ المحلية</div>
-        <div class="panel-sub">عدد النسخ الحالية: {len(backups)}</div></div>""",
+        """
+        <div class="panel">
+            <div class="panel-title">🔄 استرجاع الداتا</div>
+            <div class="panel-sub">
+                يمكنك استرجاع قاعدة البيانات من نسخة موجودة
+                داخل Google Drive.
+            </div>
+        </div>
+        """,
         unsafe_allow_html=True
     )
 
-    if backups:
-        labels = {
-            f"{p.name} — {datetime.fromtimestamp(p.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')}": str(p)
-            for p in backups
-        }
-        selected_label = st.selectbox("اختر نسخة للاسترجاع", list(labels.keys()))
-        selected_file = labels[selected_label]
+    if gdrive_dir:
 
-        st.warning("⚠️ الاسترجاع يستبدل الداتا الحالية. قبل الاسترجاع سيتم إنشاء نسخة أمان تلقائياً.")
-        if st.button("🔄 استرجاع النسخة المختارة", use_container_width=True):
-            try:
-                restore_backup(selected_file)
-                st.success("✅ تم الاسترجاع بنجاح. اعمل Refresh للتطبيق.")
-            except Exception as exc:
-                st.error(f"❌ فشل الاسترجاع: {exc}")
-    else:
-        st.info("📭 أول عملية حفظ ستنشئ أول Backup تلقائياً.")
+        try:
 
+            google_db = (
+                FilePath(gdrive_dir)
+                / "print_shop.db"
+            )
+
+            if google_db.exists():
+
+                modified_time = datetime.fromtimestamp(
+                    google_db.stat().st_mtime
+                ).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+
+                st.success(
+                    "☁️ توجد نسخة من الداتا على Google Drive."
+                )
+
+                st.caption(
+                    f"آخر تعديل: {modified_time}"
+                )
+
+                st.warning(
+                    "⚠️ الاسترجاع سيستبدل قاعدة البيانات "
+                    "الحالية الموجودة على الجهاز."
+                )
+
+                if st.button(
+                    "🔄 استرجاع الداتا من Google Drive",
+                    use_container_width=True
+                ):
+
+                    try:
+
+                        restore_backup(
+                            str(google_db)
+                        )
+
+                        st.success(
+                            "✅ تم استرجاع الداتا بنجاح."
+                        )
+
+                        st.info(
+                            "اعمل Refresh للتطبيق "
+                            "عشان تظهر البيانات المسترجعة."
+                        )
+
+                    except Exception as exc:
+
+                        st.error(
+                            "❌ فشل استرجاع الداتا:\n\n"
+                            + str(exc)
+                        )
+
+            else:
+
+                st.info(
+                    "📭 لا توجد نسخة داتا على Google Drive حالياً."
+                )
+
+        except Exception as exc:
+
+            st.error(
+                "❌ حصل خطأ أثناء قراءة Google Drive:\n\n"
+                + str(exc)
+            )
 
 # =========================================================
 # FOOTER
