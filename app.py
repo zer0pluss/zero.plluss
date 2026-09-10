@@ -1,5 +1,8 @@
 import base64
+import json
+import shutil
 import sqlite3
+from pathlib import Path as FilePath
 from datetime import date, datetime
 
 import pandas as pd
@@ -41,6 +44,11 @@ logo_b64 = image_base64(LOGO_PATH)
 # =========================================================
 
 DB_NAME = "print_shop.db"
+
+# Local backups are always enabled.
+BACKUP_DIR = FilePath("ZERO_Backups")
+# This file stores the optional iCloud Drive folder path.
+BACKUP_CONFIG = FilePath("zero_backup_config.json")
 
 
 def get_connection():
@@ -86,6 +94,94 @@ def init_db():
 
     conn.commit()
     conn.close()
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def load_backup_config():
+    try:
+        if BACKUP_CONFIG.exists():
+            data = json.loads(BACKUP_CONFIG.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else {"icloud_path": ""}
+    except Exception:
+        pass
+    return {"icloud_path": ""}
+
+
+def save_backup_config(icloud_path):
+    BACKUP_CONFIG.write_text(
+        json.dumps({"icloud_path": icloud_path}, ensure_ascii=False, indent=2),
+        encoding="utf-8"
+    )
+
+
+def create_sqlite_backup(folder):
+    """Create a consistent SQLite backup using SQLite's backup API."""
+    folder = FilePath(folder)
+    folder.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    target = folder / f"ZERO_backup_{stamp}.db"
+
+    source = sqlite3.connect(DB_NAME, timeout=30)
+    destination = sqlite3.connect(str(target))
+    try:
+        source.backup(destination)
+    finally:
+        destination.close()
+        source.close()
+
+    return target
+
+
+def backup_after_save():
+    """Always create a local backup; create an iCloud backup if configured."""
+    result = {"local": None, "icloud": None, "icloud_error": None}
+
+    try:
+        result["local"] = create_sqlite_backup(BACKUP_DIR)
+    except Exception as exc:
+        result["icloud_error"] = f"فشل الـBackup المحلي: {exc}"
+        return result
+
+    icloud_path = str(load_backup_config().get("icloud_path", "")).strip()
+    if icloud_path:
+        try:
+            icloud_folder = FilePath(icloud_path)
+            if not icloud_folder.exists():
+                raise FileNotFoundError("مسار iCloud غير موجود حالياً")
+            result["icloud"] = create_sqlite_backup(icloud_folder)
+        except Exception as exc:
+            result["icloud_error"] = str(exc)
+
+    return result
+
+
+def list_local_backups():
+    return sorted(
+        BACKUP_DIR.glob("ZERO_backup_*.db"),
+        key=lambda x: x.stat().st_mtime,
+        reverse=True
+    )
+
+
+def restore_backup(backup_file):
+    backup_file = FilePath(backup_file)
+    if not backup_file.exists():
+        raise FileNotFoundError("ملف الـBackup غير موجود")
+
+    # Safety backup of current DB before restoring.
+    safety_dir = BACKUP_DIR / "before_restore"
+    safety_dir.mkdir(parents=True, exist_ok=True)
+    if FilePath(DB_NAME).exists():
+        create_sqlite_backup(safety_dir)
+
+    test = sqlite3.connect(str(backup_file))
+    try:
+        if test.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+            raise ValueError("النسخة الاحتياطية تالفة")
+    finally:
+        test.close()
+
+    shutil.copy2(backup_file, DB_NAME)
 
 
 init_db()
@@ -106,7 +202,7 @@ def set_custom_design():
             position: fixed;
             inset: 0;
             background-image: url("data:image/jpg;base64,{logo_b64}");
-            background-repeat: non-repeat;
+            background-repeat: no-repeat;
             background-position: 20% 30%;
             background-size: min(1000px, 65vw);
             opacity: 0.077;
@@ -660,6 +756,7 @@ with st.sidebar:
         "📋  عرض واستعلام الطلبات",
         "⚙️  تحديث حالة طلب",
         "📝  المفكرة اليومية",
+        "💾  النسخ الاحتياطية",
     ]
 
     choice = st.selectbox(
@@ -719,7 +816,8 @@ st.markdown(
                     align-items:center;gap:20px;direction:ltr">
             <div>
                 <div class="hero-title">ZERO Advertising | Management System</div>
-                <div class="verybig-title"> {today_text} &nbsp</div>
+                <div class="verybig-title">{today_text}</div>
+            </div>
         </div>
     </div>
     """,
@@ -900,9 +998,16 @@ if choice == "➕  تسجيل طلب جديد":
                 conn.commit()
                 conn.close()
 
+                backup_result = backup_after_save()
+
                 st.success(
                     f"✅ تم حفظ طلب العميل «{customer_name}» بنجاح."
                 )
+                if backup_result["icloud_error"]:
+                    st.warning(
+                        "⚠️ الداتا اتحفظت، لكن حصلت مشكلة في الـBackup: "
+                        + backup_result["icloud_error"]
+                    )
 
 
 # =========================================================
@@ -1162,7 +1267,16 @@ elif choice == "⚙️  تحديث حالة طلب":
                 )
 
                 conn.commit()
+                conn.close()
+
+                backup_result = backup_after_save()
+
                 st.success("✅ تم تحديث الطلب بنجاح.")
+                if backup_result["icloud_error"]:
+                    st.warning(
+                        "⚠️ التحديث اتحفظ، لكن حصلت مشكلة في الـBackup: "
+                        + backup_result["icloud_error"]
+                    )
                 st.rerun()
 
     conn.close()
@@ -1223,10 +1337,16 @@ elif choice == "📝  المفكرة اليومية":
     ):
 
         save_today_note(note.strip())
+        backup_result = backup_after_save()
 
         st.success(
             f"✅ تم حفظ ملاحظة يوم {today_iso}."
         )
+        if backup_result["icloud_error"]:
+            st.warning(
+                "⚠️ الملاحظة اتحفظت، لكن حصلت مشكلة في الـBackup: "
+                + backup_result["icloud_error"]
+            )
 
         st.rerun()
 
@@ -1254,6 +1374,95 @@ elif choice == "📝  المفكرة اليومية":
                 f"📅 {row['note_date']}"
             ):
                 st.write(row["note_text"])
+
+
+# =========================================================
+# 5. BACKUPS / ICLOUD
+# =========================================================
+
+elif choice == "💾  النسخ الاحتياطية":
+
+    st.markdown(
+        """
+        <div class="panel">
+            <div class="panel-title">💾 حماية البيانات</div>
+            <div class="panel-sub">
+                الداتا الأساسية محفوظة في SQLite على الجهاز، وكل عملية حفظ ناجحة
+                تعمل Backup تلقائي. تقدر تضيف iCloud لاحقاً من هنا بدون ما تغيّر النظام.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    config = load_backup_config()
+    current_icloud = str(config.get("icloud_path", "")).strip()
+
+    st.markdown(
+        """
+        <div class="panel">
+            <div class="panel-title">☁️ ربط iCloud لاحقاً</div>
+            <div class="panel-sub">
+                مش محتاج Apple ID أو إيميل دلوقتي. بعد تثبيت iCloud Drive على الجهاز،
+                اكتب مسار فولدر ZERO Backups فقط. لا تضع قاعدة البيانات الأساسية داخله.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    icloud_path = st.text_input(
+        "مسار فولدر iCloud Drive للـBackup",
+        value=current_icloud,
+        placeholder=r"مثال: C:\Users\YourName\iCloudDrive\ZERO Backups",
+        help="اتركه فاضي لحد ما تجهز iCloud. النظام سيظل يعمل بالـLocal Backup تلقائياً."
+    )
+
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("☁️ حفظ مسار iCloud", use_container_width=True):
+            save_backup_config(icloud_path.strip())
+            if icloud_path.strip() and not FilePath(icloud_path.strip()).exists():
+                st.warning("المسار غير موجود حالياً. لما تثبت iCloud وتعمل الفولدر، استخدم نفس المسار.")
+            else:
+                st.success("✅ تم حفظ إعداد iCloud.")
+
+    with c2:
+        if st.button("💾 عمل Backup الآن", use_container_width=True):
+            result = backup_after_save()
+            if result["local"]:
+                st.success(f"✅ Local Backup: {result['local'].name}")
+            if result["icloud"]:
+                st.success(f"☁️ iCloud Backup: {result['icloud'].name}")
+            if result["icloud_error"]:
+                st.warning(result["icloud_error"])
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    backups = list_local_backups()
+    st.markdown(
+        f"""<div class="panel"><div class="panel-title">🖥️ النسخ المحلية</div>
+        <div class="panel-sub">عدد النسخ الحالية: {len(backups)}</div></div>""",
+        unsafe_allow_html=True
+    )
+
+    if backups:
+        labels = {
+            f"{p.name} — {datetime.fromtimestamp(p.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')}": str(p)
+            for p in backups
+        }
+        selected_label = st.selectbox("اختر نسخة للاسترجاع", list(labels.keys()))
+        selected_file = labels[selected_label]
+
+        st.warning("⚠️ الاسترجاع يستبدل الداتا الحالية. قبل الاسترجاع سيتم إنشاء نسخة أمان تلقائياً.")
+        if st.button("🔄 استرجاع النسخة المختارة", use_container_width=True):
+            try:
+                restore_backup(selected_file)
+                st.success("✅ تم الاسترجاع بنجاح. اعمل Refresh للتطبيق.")
+            except Exception as exc:
+                st.error(f"❌ فشل الاسترجاع: {exc}")
+    else:
+        st.info("📭 أول عملية حفظ ستنشئ أول Backup تلقائياً.")
 
 
 # =========================================================
