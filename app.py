@@ -1545,297 +1545,356 @@ elif choice == "📝  المفكرة اليومية":
 # =========================================================
 # 5. BACKUPS / GOOGLE DRIVE
 # =========================================================
-
 # =========================================================
-# 5. BACKUPS / GOOGLE DRIVE
+# GOOGLE DRIVE BACKUP SYSTEM
 # =========================================================
 
-elif choice == "💾  النسخ الاحتياطية":
+import os
+from pathlib import Path as FilePath
 
-    st.markdown(
-        """
-        <div class="panel">
-            <div class="panel-title">💾 حماية البيانات</div>
-            <div class="panel-sub">
-                قاعدة البيانات الأساسية محفوظة على الجهاز،
-                ويتم نسخها تلقائياً إلى Google Drive.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
 
-    # =====================================================
-    # GOOGLE DRIVE STATUS
-    # =====================================================
+# ---------------------------------------------------------
+# GOOGLE DRIVE CONFIG
+# ---------------------------------------------------------
 
-    st.markdown(
-        """
-        <div class="panel">
-            <div class="panel-title">☁️ Google Drive</div>
-            <div class="panel-sub">
-                النظام يحاول العثور على Google Drive تلقائياً.
-                عند العثور عليه سيتم حفظ نسخة قاعدة البيانات داخله.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+GOOGLE_CREDENTIALS_FILE = FilePath("credentials.json")
+GOOGLE_TOKEN_FILE = FilePath("google_drive_token.json")
 
-    gdrive_dir = get_gdrive_data_dir()
+GOOGLE_DRIVE_FOLDER_NAME = "ZERO Advertising"
+GOOGLE_DRIVE_DATABASE_NAME = "print_shop.db"
 
-    if gdrive_dir:
+GOOGLE_DRIVE_SCOPE = [
+    "https://www.googleapis.com/auth/drive.file"
+]
 
-        st.success(
-            "☁️ Google Drive متصل بنجاح.\n\n"
-            f"مكان حفظ الداتا:\n\n`{gdrive_dir}`"
+
+# ---------------------------------------------------------
+# GET GOOGLE DRIVE SERVICE
+# ---------------------------------------------------------
+
+def get_google_drive_service():
+    """
+    Connect to Google Drive using OAuth.
+    First time: browser opens for Google login.
+    Next times: saved token is reused automatically.
+    """
+
+    try:
+        from google.auth.transport.requests import Request
+        from google.oauth2.credentials import Credentials
+        from google_auth_oauthlib.flow import InstalledAppFlow
+        from googleapiclient.discovery import build
+
+    except ImportError:
+        raise Exception(
+            "Google Drive libraries are not installed.\n\n"
+            "Run:\n"
+            "pip install google-api-python-client "
+            "google-auth-httplib2 google-auth-oauthlib"
         )
 
-        # =================================================
-        # CURRENT DATABASE STATUS
-        # =================================================
+    credentials = None
 
-        db_file = FilePath(DB_NAME)
+    # -----------------------------------------------------
+    # Load saved Google account
+    # -----------------------------------------------------
 
-        if db_file.exists():
-
-            db_size = db_file.stat().st_size / 1024
-
-            st.info(
-                f"📦 قاعدة البيانات الحالية: "
-                f"`{DB_NAME}`\n\n"
-                f"الحجم: {db_size:.1f} KB"
-            )
-
-        # =================================================
-        # MANUAL SYNC
-        # =================================================
-
-        if st.button(
-            "☁️ مزامنة الداتا مع Google Drive الآن",
-            use_container_width=True
-        ):
-
-            try:
-
-                result = sync_database_to_google_drive()
-
-                if result["success"]:
-
-                    st.success(
-                        "✅ تم رفع أحدث نسخة من الداتا "
-                        "إلى Google Drive بنجاح."
-                    )
-
-                    st.caption(
-                        f"📁 الملف: `{result['path']}`"
-                    )
-
-                else:
-
-                    st.error(
-                        "❌ فشل رفع الداتا إلى Google Drive:\n\n"
-                        + str(result["error"])
-                    )
-
-            except Exception as exc:
-
-                st.error(
-                    "❌ حصل خطأ أثناء المزامنة:\n\n"
-                    + str(exc)
-                )
-
-    else:
-
-        st.warning(
-            "⚠️ Google Drive غير متصل حالياً."
-        )
-
-        st.info(
-            "تأكد أن Google Drive for Desktop شغال "
-            "وأن Google Drive ظاهر في This PC."
-        )
-
-    # =====================================================
-    # MANUAL GOOGLE DRIVE PATH
-    # =====================================================
-
-    with st.expander(
-        "⚙️ تحديد مكان Google Drive يدوياً"
-    ):
-
-        config = load_backup_config()
-
-        current_path = str(
-            config.get("gdrive_path", "")
-        ).strip()
-
-        manual_path = st.text_input(
-            "مسار Google Drive",
-            value=current_path,
-            placeholder="مثال: G:\\My Drive",
-            help=(
-                "اكتب مسار My Drive الموجود عندك في This PC. "
-                "مثال: G:\\My Drive"
-            )
-        )
-
-        col_save, col_clear = st.columns(2)
-
-        with col_save:
-
-            if st.button(
-                "💾 حفظ المسار",
-                use_container_width=True
-            ):
-
-                try:
-
-                    clean_path = manual_path.strip()
-
-                    if clean_path:
-
-                        test_folder = FilePath(clean_path)
-
-                        if not test_folder.exists():
-
-                            st.error(
-                                "❌ المسار ده مش موجود على الجهاز."
-                            )
-
-                        else:
-
-                            save_backup_config(
-                                clean_path
-                            )
-
-                            st.success(
-                                "✅ تم حفظ مسار Google Drive."
-                            )
-
-                            st.rerun()
-
-                    else:
-
-                        save_backup_config("")
-
-                        st.success(
-                            "✅ تم إلغاء المسار اليدوي "
-                            "والرجوع للاكتشاف التلقائي."
-                        )
-
-                        st.rerun()
-
-                except Exception as exc:
-
-                    st.error(
-                        "❌ حصل خطأ:\n\n"
-                        + str(exc)
-                    )
-
-        with col_clear:
-
-            if st.button(
-                "🗑️ إلغاء المسار اليدوي",
-                use_container_width=True
-            ):
-
-                save_backup_config("")
-
-                st.success(
-                    "✅ تم إلغاء المسار اليدوي."
-                )
-
-                st.rerun()
-
-    # =====================================================
-    # RESTORE DATABASE
-    # =====================================================
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    st.markdown(
-        """
-        <div class="panel">
-            <div class="panel-title">🔄 استرجاع الداتا</div>
-            <div class="panel-sub">
-                يمكنك استرجاع قاعدة البيانات من نسخة موجودة
-                داخل Google Drive.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    if gdrive_dir:
+    if GOOGLE_TOKEN_FILE.exists():
 
         try:
+            credentials = Credentials.from_authorized_user_file(
+                str(GOOGLE_TOKEN_FILE),
+                GOOGLE_DRIVE_SCOPE
+            )
+        except Exception:
+            credentials = None
 
-            google_db = (
-                FilePath(gdrive_dir)
-                / "print_shop.db"
+    # -----------------------------------------------------
+    # Refresh expired token
+    # -----------------------------------------------------
+
+    if credentials and credentials.expired and credentials.refresh_token:
+
+        try:
+            credentials.refresh(Request())
+
+            GOOGLE_TOKEN_FILE.write_text(
+                credentials.to_json(),
+                encoding="utf-8"
             )
 
-            if google_db.exists():
+        except Exception:
+            credentials = None
 
-                modified_time = datetime.fromtimestamp(
-                    google_db.stat().st_mtime
-                ).strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                )
+    # -----------------------------------------------------
+    # Login if no valid credentials
+    # -----------------------------------------------------
 
-                st.success(
-                    "☁️ توجد نسخة من الداتا على Google Drive."
-                )
+    if not credentials or not credentials.valid:
 
-                st.caption(
-                    f"آخر تعديل: {modified_time}"
-                )
+        if not GOOGLE_CREDENTIALS_FILE.exists():
 
-                st.warning(
-                    "⚠️ الاسترجاع سيستبدل قاعدة البيانات "
-                    "الحالية الموجودة على الجهاز."
-                )
-
-                if st.button(
-                    "🔄 استرجاع الداتا من Google Drive",
-                    use_container_width=True
-                ):
-
-                    try:
-
-                        restore_backup(
-                            str(google_db)
-                        )
-
-                        st.success(
-                            "✅ تم استرجاع الداتا بنجاح."
-                        )
-
-                        st.info(
-                            "اعمل Refresh للتطبيق "
-                            "عشان تظهر البيانات المسترجعة."
-                        )
-
-                    except Exception as exc:
-
-                        st.error(
-                            "❌ فشل استرجاع الداتا:\n\n"
-                            + str(exc)
-                        )
-
-            else:
-
-                st.info(
-                    "📭 لا توجد نسخة داتا على Google Drive حالياً."
-                )
-
-        except Exception as exc:
-
-            st.error(
-                "❌ حصل خطأ أثناء قراءة Google Drive:\n\n"
-                + str(exc)
+            raise Exception(
+                "ملف credentials.json مش موجود.\n\n"
+                "حط credentials.json جنب ملف البرنامج."
             )
+
+        flow = InstalledAppFlow.from_client_secrets_file(
+            str(GOOGLE_CREDENTIALS_FILE),
+            GOOGLE_DRIVE_SCOPE
+        )
+
+        credentials = flow.run_local_server(
+            port=0,
+            access_type="offline",
+            prompt="consent"
+        )
+
+        GOOGLE_TOKEN_FILE.write_text(
+            credentials.to_json(),
+            encoding="utf-8"
+        )
+
+    # -----------------------------------------------------
+    # Build Drive API
+    # -----------------------------------------------------
+
+    service = build(
+        "drive",
+        "v3",
+        credentials=credentials
+    )
+
+    return service
+
+
+# ---------------------------------------------------------
+# GET GOOGLE ACCOUNT INFORMATION
+# ---------------------------------------------------------
+
+def get_google_account_info():
+
+    try:
+
+        service = get_google_drive_service()
+
+        about = service.about().get(
+            fields="user(displayName,emailAddress)"
+        ).execute()
+
+        user = about.get("user", {})
+
+        return {
+            "name": user.get("displayName", ""),
+            "email": user.get("emailAddress", "")
+        }
+
+    except Exception as exc:
+
+        return {
+            "name": "",
+            "email": "",
+            "error": str(exc)
+        }
+
+
+# ---------------------------------------------------------
+# FIND OR CREATE ZERO ADVERTISING FOLDER
+# ---------------------------------------------------------
+
+def get_or_create_google_drive_folder(service):
+
+    query = (
+        f"name = '{GOOGLE_DRIVE_FOLDER_NAME}' "
+        "and mimeType = 'application/vnd.google-apps.folder' "
+        "and trashed = false"
+    )
+
+    response = service.files().list(
+        q=query,
+        spaces="drive",
+        fields="files(id,name)",
+        pageSize=10
+    ).execute()
+
+    folders = response.get("files", [])
+
+    # Folder already exists
+    if folders:
+        return folders[0]["id"]
+
+    # Create folder
+    folder_metadata = {
+        "name": GOOGLE_DRIVE_FOLDER_NAME,
+        "mimeType": "application/vnd.google-apps.folder"
+    }
+
+    folder = service.files().create(
+        body=folder_metadata,
+        fields="id,name"
+    ).execute()
+
+    return folder["id"]
+
+
+# ---------------------------------------------------------
+# UPLOAD / UPDATE DATABASE
+# ---------------------------------------------------------
+
+def upload_database_to_google_drive():
+
+    from googleapiclient.http import MediaFileUpload
+
+    database_path = FilePath(DB_NAME)
+
+    # Make sure database exists
+    if not database_path.exists():
+
+        raise Exception(
+            f"قاعدة البيانات {DB_NAME} مش موجودة."
+        )
+
+    service = get_google_drive_service()
+
+    # -----------------------------------------------------
+    # Get / create folder
+    # -----------------------------------------------------
+
+    folder_id = get_or_create_google_drive_folder(
+        service
+    )
+
+    # -----------------------------------------------------
+    # Check if database already exists
+    # -----------------------------------------------------
+
+    query = (
+        f"name = '{GOOGLE_DRIVE_DATABASE_NAME}' "
+        f"and '{folder_id}' in parents "
+        "and trashed = false"
+    )
+
+    response = service.files().list(
+        q=query,
+        spaces="drive",
+        fields="files(id,name)",
+        pageSize=10
+    ).execute()
+
+    files = response.get("files", [])
+
+    # -----------------------------------------------------
+    # Prepare database file
+    # -----------------------------------------------------
+
+    media = MediaFileUpload(
+        str(database_path),
+        mimetype="application/x-sqlite3",
+        resumable=True
+    )
+
+    # -----------------------------------------------------
+    # UPDATE EXISTING DATABASE
+    # -----------------------------------------------------
+
+    if files:
+
+        file_id = files[0]["id"]
+
+        updated_file = service.files().update(
+            fileId=file_id,
+            media_body=media,
+            fields="id,name,modifiedTime,webViewLink"
+        ).execute()
+
+        return updated_file
+
+    # -----------------------------------------------------
+    # CREATE DATABASE FOR FIRST TIME
+    # -----------------------------------------------------
+
+    file_metadata = {
+        "name": GOOGLE_DRIVE_DATABASE_NAME,
+        "parents": [folder_id]
+    }
+
+    created_file = service.files().create(
+        body=file_metadata,
+        media_body=media,
+        fields="id,name,modifiedTime,webViewLink"
+    ).execute()
+
+    return created_file
+
+
+# ---------------------------------------------------------
+# AUTOMATIC BACKUP AFTER EVERY SAVE
+# ---------------------------------------------------------
+
+def backup_after_save():
+
+    result = {
+        "local": True,
+        "gdrive": False,
+        "gdrive_error": None
+    }
+
+    try:
+
+        uploaded_file = upload_database_to_google_drive()
+
+        if uploaded_file:
+
+            result["gdrive"] = True
+            result["gdrive_file"] = uploaded_file
+
+    except Exception as exc:
+
+        result["gdrive_error"] = str(exc)
+
+    return result
+
+
+# ---------------------------------------------------------
+# CHANGE GOOGLE ACCOUNT
+# ---------------------------------------------------------
+
+def disconnect_google_account():
+
+    try:
+
+        if GOOGLE_TOKEN_FILE.exists():
+            GOOGLE_TOKEN_FILE.unlink()
+
+        return True, None
+
+    except Exception as exc:
+
+        return False, str(exc)
+
+
+# ---------------------------------------------------------
+# CHECK GOOGLE DRIVE CONNECTION
+# ---------------------------------------------------------
+
+def check_google_drive_connection():
+
+    try:
+
+        info = get_google_account_info()
+
+        if info.get("error"):
+            return False, "", info["error"]
+
+        return (
+            True,
+            info.get("email", ""),
+            None
+        )
+
+    except Exception as exc:
+
+        return False, "", str(exc)
 
 # =========================================================
 # FOOTER
