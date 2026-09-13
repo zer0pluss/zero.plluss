@@ -1,3 +1,9 @@
-streamlit
-pandas
-mega.py
+streamlit>=1.40,<2.0
+pandas>=2.2,<3.0
+psycopg2-binary>=2.9,<3.0
+google-api-python-client>=2.150,<3.0
+google-auth>=2.35,<3.0
+reportlab>=4.2,<5.0
+arabic-reshaper>=3.0,<4.0
+python-bidi>=0.6,<1.0
+Pillow>=10.0,<12.0
