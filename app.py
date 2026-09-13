@@ -113,22 +113,54 @@ def get_secret(key):
     return os.environ.get(key, "")
 
 
-def get_mega_client():
+def mega_login():
     """
     Logs in to MEGA using email + password from Secrets.
-    Returns None if not configured.
+
+    Returns (client, error_message):
+        - (client, None)  on success
+        - (None, message) on failure, with the REAL reason
     """
     email = get_secret("MEGA_EMAIL").strip()
     password = get_secret("MEGA_PASSWORD")
 
     if not email or not password:
-        return None
+        return None, (
+            "إيميل أو باسورد MEGA مش موجودين في Secrets — "
+            "تأكد إنك حاطط MEGA_EMAIL و MEGA_PASSWORD "
+            "وتعملت Reboot بعد الحفظ."
+        )
 
     try:
         from mega import Mega
-        return Mega().login(email, password)
-    except Exception:
-        return None
+    except ImportError:
+        return None, (
+            "مكتبة mega.py مش متسطبة — ضيف السطر mega.py "
+            "في ملف requirements.txt واعمل Reboot."
+        )
+
+    try:
+        client = Mega().login(email, password)
+        return client, None
+    except Exception as exc:
+        msg = str(exc)
+        hint = ""
+        low = msg.lower()
+        if any(w in low for w in ["timeout", "timed out", "connect", "unreachable", "refused", "expecting value", "ssl"]):
+            hint = (
+                "\n\nيعني غالباً MEGA رافضة الاتصال من سيرفرات السحابة "
+                "(بيحصل كتير مع Streamlit Cloud) أو في مشكلة إنترنت مؤقتة — "
+                "جرب تاني بعد شوية، ولو المشكلة مستمرة قولي أحولك لحل تاني."
+            )
+        elif "password" in low or "credential" in low or "account" in low:
+            hint = "\n\nتأكد إن الإيميل والباسورد صح — جرب تسجل دخولك على mega.nz من المتصفح الأول."
+        return None, f"فشل تسجيل الدخول لـ MEGA:\n{msg}{hint}"
+
+
+def get_mega_client():
+    """Returns the MEGA client or None (kept for existing call sites)."""
+    client, _ = mega_login()
+    return client
 
 
 def _mega_files_by_name(m, name):
@@ -169,9 +201,9 @@ def cloud_upload_db():
     """
     result = {"success": False, "error": None}
 
-    m = get_mega_client()
+    m, login_error = mega_login()
     if m is None:
-        result["error"] = "الربط مع MEGA غير مُهيأ (راجع Secrets)."
+        result["error"] = login_error or "فشل الاتصال بـ MEGA."
         return result
 
     if not FilePath(DB_NAME).exists():
@@ -200,9 +232,9 @@ def cloud_download_db():
     """
     result = {"success": False, "error": None}
 
-    m = get_mega_client()
+    m, login_error = mega_login()
     if m is None:
-        result["error"] = "الربط مع MEGA غير مُهيأ (راجع Secrets)."
+        result["error"] = login_error or "فشل الاتصال بـ MEGA."
         return result
 
     try:
@@ -1513,7 +1545,7 @@ elif choice == "☁️  النسخ الاحتياطي (MEGA)":
         unsafe_allow_html=True
     )
 
-    client = get_mega_client()
+    client, mega_error = mega_login()
 
     # -----------------------------------------------------
     # NOT CONFIGURED -> show setup steps
@@ -1521,7 +1553,10 @@ elif choice == "☁️  النسخ الاحتياطي (MEGA)":
 
     if client is None:
 
-        st.error("❌ الربط مع MEGA غير مُهيأ.")
+        st.error("❌ الربط مع MEGA مش شغال.")
+
+        if mega_error:
+            st.warning("🔍 **السبب بالظبط:**\n\n" + mega_error)
 
         st.markdown(
             """
