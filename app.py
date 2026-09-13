@@ -1,13 +1,11 @@
 import base64
-import json
-import shutil
-import sqlite3
+import os
 from pathlib import Path as FilePath
 from datetime import date, datetime
+import sqlite3
 
 import pandas as pd
 import streamlit as st
-
 
 # =========================================================
 # PAGE CONFIG
@@ -16,7 +14,7 @@ import streamlit as st
 st.set_page_config(
     page_title="ZERO Advertising | Management System",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",  # ✅ مهم جداً للموبايل
 )
 
 
@@ -43,14 +41,7 @@ logo_b64 = image_base64(LOGO_PATH)
 # DATABASE
 # =========================================================
 
-
 DB_NAME = "print_shop.db"
-
-# Google Drive folder name
-GDRIVE_FOLDER_NAME = "ZERO_Data"
-
-# This file remembers the Google Drive location if needed
-BACKUP_CONFIG = FilePath("zero_backup_config.json")
 
 
 def get_connection():
@@ -98,166 +89,103 @@ def init_db():
 
 
 # =========================================================
-# GOOGLE DRIVE
+# CLOUD SYNC  (MEGA - https://mega.nz)
+# ------------------------------------------------------------
+# Setup (one time - very easy):
+#   1) Create a free account on https://mega.nz  (20 GB free)
+#   2) Streamlit Cloud -> your app -> Settings -> Secrets:
+#        MEGA_EMAIL = "your-email@example.com"
+#        MEGA_PASSWORD = "your-password"
+#   3) requirements.txt must contain:  mega.py
+#   4) Reboot the app. That's it.
 # =========================================================
 
-def load_backup_config():
+REMOTE_DB_NAME = "print_shop.db"
+
+
+def get_secret(key):
     try:
-        if BACKUP_CONFIG.exists():
-            data = json.loads(
-                BACKUP_CONFIG.read_text(encoding="utf-8")
-            )
+        value = st.secrets.get(key, "")
+        if value:
+            return str(value)
+    except Exception:
+        pass
+    return os.environ.get(key, "")
 
-            if isinstance(data, dict):
-                return data
 
+def get_mega_client():
+    """
+    Logs in to MEGA using email + password from Secrets.
+    Returns None if not configured.
+    """
+    email = get_secret("MEGA_EMAIL").strip()
+    password = get_secret("MEGA_PASSWORD")
+
+    if not email or not password:
+        return None
+
+    try:
+        from mega import Mega
+        return Mega().login(email, password)
+    except Exception:
+        return None
+
+
+def _mega_files_by_name(m, name):
+    """
+    Returns all remote files with this name,
+    newest first (by timestamp).
+    """
+    matches = []
+
+    try:
+        for handle, info in m.get_files().items():
+            if info.get("a", {}).get("n") == name:
+                matches.append((handle, info))
     except Exception:
         pass
 
-    return {"gdrive_path": ""}
+    matches.sort(key=lambda x: x[1].get("ts", 0), reverse=True)
+    return matches
 
 
-def save_backup_config(gdrive_path):
-    BACKUP_CONFIG.write_text(
-        json.dumps(
-            {"gdrive_path": gdrive_path},
-            ensure_ascii=False,
-            indent=2
-        ),
-        encoding="utf-8"
-    )
-
-
-def find_google_drive():
-    """
-    يحاول العثور على Google Drive for Desktop
-    تلقائياً في Windows.
-    """
-
-    home = FilePath.home()
-
-    candidates = [
-        # Common folders
-        home / "Google Drive",
-        home / "Google Drive" / "My Drive",
-        home / "My Drive",
-
-        # Common Google Drive Desktop locations
-        FilePath("G:/"),
-        FilePath("H:/"),
-        FilePath("I:/"),
-        FilePath("J:/"),
-        FilePath("K:/"),
-        FilePath("L:/"),
-        FilePath("M:/"),
-        FilePath("N:/"),
-        FilePath("O:/"),
-        FilePath("P:/"),
-        FilePath("Q:/"),
-        FilePath("R:/"),
-        FilePath("S:/"),
-        FilePath("T:/"),
-        FilePath("U:/"),
-        FilePath("V:/"),
-        FilePath("W:/"),
-        FilePath("X:/"),
-        FilePath("Y:/"),
-        FilePath("Z:/"),
-    ]
-
-    for folder in candidates:
+def _mega_delete(m, handle, info):
+    """Tries to delete a remote file (different mega.py versions differ)."""
+    for target in (info, handle):
         try:
-            if not folder.exists():
-                continue
-
-            # If this is directly "My Drive"
-            if folder.name.lower() == "my drive":
-                return folder
-
-            # Check for My Drive inside it
-            my_drive = folder / "My Drive"
-
-            if my_drive.exists():
-                return my_drive
-
-            # Google Drive Desktop can expose the drive
-            # directly as the root
-            if folder.drive:
-                return folder
-
+            m.delete(target)
+            return True
         except Exception:
             continue
+    return False
 
-    return None
 
-
-def get_gdrive_data_dir():
+def cloud_upload_db():
     """
-    Returns the folder where the application database
-    should be synchronized.
+    Uploads the local SQLite database file to MEGA.
+    Called automatically after every successful save.
+    Old copies with the same name are removed first,
+    so only ONE backup file is kept.
     """
+    result = {"success": False, "error": None}
 
-    config = load_backup_config()
+    m = get_mega_client()
+    if m is None:
+        result["error"] = "الربط مع MEGA غير مُهيأ (راجع Secrets)."
+        return result
 
-    manual_path = str(
-        config.get("gdrive_path", "")
-    ).strip()
-
-    # If user selected a manual Google Drive path
-    if manual_path:
-        folder = FilePath(manual_path)
-
-        try:
-            folder.mkdir(parents=True, exist_ok=True)
-            return folder
-        except Exception:
-            pass
-
-    # Otherwise detect Google Drive automatically
-    detected_drive = find_google_drive()
-
-    if detected_drive:
-        data_folder = detected_drive / GDRIVE_FOLDER_NAME
-        data_folder.mkdir(parents=True, exist_ok=True)
-        return data_folder
-
-    return None
-
-
-def sync_database_to_google_drive():
-    """
-    Copies the current SQLite database to Google Drive.
-
-    Only ONE database file is maintained in Google Drive.
-    """
-
-    result = {
-        "success": False,
-        "path": None,
-        "error": None
-    }
+    if not FilePath(DB_NAME).exists():
+        result["error"] = "ملف قاعدة البيانات غير موجود."
+        return result
 
     try:
-        if not FilePath(DB_NAME).exists():
-            result["error"] = "ملف قاعدة البيانات غير موجود."
-            return result
+        # remove old copies first (best effort)
+        for handle, info in _mega_files_by_name(m, REMOTE_DB_NAME):
+            _mega_delete(m, handle, info)
 
-        gdrive_folder = get_gdrive_data_dir()
-
-        if gdrive_folder is None:
-            result["error"] = (
-                "Google Drive مش متعرف عليه. "
-                "تأكد إن Google Drive for Desktop شغال."
-            )
-            return result
-
-        target = gdrive_folder / "print_shop.db"
-
-        # Copy the current database to Google Drive
-        shutil.copy2(DB_NAME, target)
+        m.upload(DB_NAME)
 
         result["success"] = True
-        result["path"] = str(target)
 
     except Exception as exc:
         result["error"] = str(exc)
@@ -265,90 +193,96 @@ def sync_database_to_google_drive():
     return result
 
 
-def backup_after_save():
+def cloud_download_db():
     """
-    Compatibility function used by the rest of the application.
-
-    Every successful save automatically synchronizes
-    the database with Google Drive.
+    Downloads the newest database copy from MEGA
+    and replaces the local file (with integrity check).
     """
+    result = {"success": False, "error": None}
 
-    result = {
-        "local": True,
-        "gdrive": None,
-        "gdrive_error": None
-    }
+    m = get_mega_client()
+    if m is None:
+        result["error"] = "الربط مع MEGA غير مُهيأ (راجع Secrets)."
+        return result
 
-    sync_result = sync_database_to_google_drive()
+    try:
+        matches = _mega_files_by_name(m, REMOTE_DB_NAME)
 
-    if sync_result["success"]:
-        result["gdrive"] = sync_result["path"]
-    else:
-        result["gdrive_error"] = sync_result["error"]
+        if not matches:
+            result["error"] = "مفيش نسخة داتا على MEGA."
+            return result
+
+        handle, info = matches[0]
+        tmp_name = DB_NAME + ".tmp"
+
+        try:
+            m.download(info, dest_path=".", dest_filename=tmp_name)
+        except TypeError:
+            m.download(handle, dest_path=".", dest_filename=tmp_name)
+
+        if not FilePath(tmp_name).exists():
+            raise ValueError("فشل تنزيل الملف من MEGA.")
+
+        # integrity check before replacing
+        test = sqlite3.connect(tmp_name)
+        try:
+            integrity = test.execute("PRAGMA integrity_check").fetchone()[0]
+            if integrity != "ok":
+                raise ValueError("نسخة قاعدة البيانات على MEGA تالفة.")
+        finally:
+            test.close()
+
+        os.replace(tmp_name, DB_NAME)
+        result["success"] = True
+
+    except Exception as exc:
+        result["error"] = str(exc)
 
     return result
 
 
-def create_sqlite_backup(folder):
-    """
-    Kept for compatibility with the existing application.
-    Creates a copy of the database in the requested folder.
-    """
-
-    folder = FilePath(folder)
-    folder.mkdir(parents=True, exist_ok=True)
-
-    target = folder / "print_shop.db"
-
-    shutil.copy2(DB_NAME, target)
-
-    return target
-
-
-def restore_backup(backup_file):
-    """
-    Restore database from a Google Drive/local database copy.
-    """
-
-    backup_file = FilePath(backup_file)
-
-    if not backup_file.exists():
-        raise FileNotFoundError(
-            "ملف قاعدة البيانات غير موجود."
-        )
-
-    # Check database integrity before restoring
-    test = sqlite3.connect(str(backup_file))
-
+def cloud_remote_info():
+    """Returns info about the remote backup file, or None."""
+    m = get_mega_client()
+    if m is None:
+        return None
     try:
-        integrity = test.execute(
-            "PRAGMA integrity_check"
-        ).fetchone()[0]
-
-        if integrity != "ok":
-            raise ValueError(
-                "نسخة قاعدة البيانات تالفة."
-            )
-
-    finally:
-        test.close()
-
-    # Close any active connection before replacing the DB
-    shutil.copy2(backup_file, DB_NAME)
+        matches = _mega_files_by_name(m, REMOTE_DB_NAME)
+        if matches:
+            ts = matches[0][1].get("ts", 0)
+            modified = ""
+            if ts:
+                modified = datetime.fromtimestamp(ts).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+            return {"found": True, "modified": modified}
+        return {"found": False}
+    except Exception:
+        return None
 
 
-def list_local_backups():
+def backup_after_save():
     """
-    Compatibility function.
-    The new system doesn't create multiple backups.
+    Compatibility function used by the rest of the application.
+    Every successful save automatically syncs to MEGA.
     """
+    return cloud_upload_db()
 
-    return []
+
+def restore_from_cloud():
+    return cloud_download_db()
 
 
 # =========================================================
-# INITIALIZE DATABASE
+# FIRST RUN:
+# If there is no local database but a Drive copy exists -> restore it
 # =========================================================
+
+if not FilePath(DB_NAME).exists():
+    if get_mega_client() is not None:
+        info = cloud_remote_info()
+        if info and info.get("found"):
+            cloud_download_db()
 
 init_db()
 
@@ -442,11 +376,6 @@ header {{
     }}
 }}
 
-@keyframes shimmer {{
-    0% {{ background-position: -500px 0; }}
-    100% {{ background-position: 500px 0; }}
-}}
-
 .fade-up {{
     animation: fadeUp .55s ease both;
 }}
@@ -464,12 +393,14 @@ header {{
    SIDEBAR
    ========================================================= */
 
+/* ✅ مهم: يمنع نصوص السايدبار من الظهور لما تكون مقفولة */
 section[data-testid="stSidebar"] {{
     background:
         linear-gradient(180deg, #070c15 0%, #0a101b 55%, #060a12 100%)
         !important;
     border-left: 1px solid rgba(226,27,43,.65);
     box-shadow: -15px 0 45px rgba(0,0,0,.35);
+    overflow: hidden !important;
 }}
 
 section[data-testid="stSidebar"] > div {{
@@ -575,32 +506,14 @@ section[data-testid="stSidebar"] * {{
     font-size: 28px;
     font-weight: 800;
     color: #ffffff;
+    line-height: 1.35;
+    word-break: break-word;
 }}
 
 .hero-sub {{
     color: #8492a6;
     font-size: 12px;
     margin-top: 3px;
-}}
-
-.online {{
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    background: rgba(34,197,94,.08);
-    border: 1px solid rgba(34,197,94,.20);
-    color: #86efac;
-    border-radius: 30px;
-    padding: 7px 12px;
-    font-size: 11px;
-}}
-
-.online-dot {{
-    width: 7px;
-    height: 7px;
-    background: #22c55e;
-    border-radius: 50%;
-    box-shadow: 0 0 10px #22c55e;
 }}
 
 
@@ -794,6 +707,49 @@ hr {{
     color: #e21b2b;
 }}
 
+
+/* =========================================================
+   ✅ MOBILE FIXES
+   ========================================================= */
+
+@media (max-width: 768px) {{
+
+    .hero-title {{
+        font-size: 20px;
+    }}
+
+    .panel-title {{
+        font-size: 17px;
+    }}
+
+    /* الأعمدة تترص فوق بعض على الموبايل */
+    div[data-testid="stHorizontalBlock"] {{
+        flex-wrap: wrap !important;
+        gap: 0.6rem;
+    }}
+
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {{
+        flex: 1 1 100% !important;
+        min-width: 100% !important;
+        width: 100% !important;
+    }}
+
+    /* كروت الإحصائيات كروتين في الصف */
+    .stat-card {{
+        min-height: 95px;
+        padding: 14px 15px;
+    }}
+
+    .stat-value {{
+        font-size: 22px;
+    }}
+
+    /* إخفاء أي محتوى طالع من السايدبار المقفول */
+    section[data-testid="stSidebar"][aria-expanded="false"] {{
+        visibility: hidden;
+    }}
+}}
+
 </style>
         """,
         unsafe_allow_html=True,
@@ -922,7 +878,7 @@ with st.sidebar:
         "📋  عرض واستعلام الطلبات",
         "⚙️  تحديث حالة طلب",
         "📝  المفكرة اليومية",
-        "💾  النسخ الاحتياطية",
+        "☁️  النسخ الاحتياطي (MEGA)",
     ]
 
     choice = st.selectbox(
@@ -935,7 +891,6 @@ with st.sidebar:
 
     # Small preview of today's note
     today_note = get_today_note()
-
 
     if today_note:
         preview = today_note[:150]
@@ -973,7 +928,6 @@ with st.sidebar:
 # =========================================================
 
 today_text = date.today().strftime("%Y-%m-%d")
-time_text = datetime.now().strftime("%I:%M %p")
 
 st.markdown(
     f"""
@@ -982,7 +936,7 @@ st.markdown(
                     align-items:center;gap:20px;direction:ltr">
             <div>
                 <div class="hero-title">ZERO Advertising | Management System</div>
-                <div class="verybig-title">{today_text}</div>
+                <div class="hero-sub">{today_text}</div>
             </div>
         </div>
     </div>
@@ -1057,7 +1011,7 @@ if choice == "➕  تسجيل طلب جديد":
             )
 
         with col2:
-            
+
             order_details = st.text_area(
                 "تفاصيل الطلب *",
                 placeholder="مثال: 500 فلاير — مقاس A5 — وجهين — ألوان...",
@@ -1065,21 +1019,18 @@ if choice == "➕  تسجيل طلب جديد":
             )
 
         with col3:
-            
-
 
             total_cost = st.number_input(
                 "التكلفة الإجمالية (جنيه)",
                 min_value=0.0,
                 step=0.0,
-                 format="%.0f"
+                format="%.0f"
             )
 
             deposit = st.number_input(
                 "المبلغ المدفوع / العربون",
                 min_value=0.0,
                 step=0.0,
- 
             )
 
             order_status = st.selectbox(
@@ -1169,10 +1120,10 @@ if choice == "➕  تسجيل طلب جديد":
                 st.success(
                     f"✅ تم حفظ طلب العميل «{customer_name}» بنجاح."
                 )
-                if backup_result["gdrive_error"]:
+                if not backup_result["success"]:
                     st.warning(
-                        "⚠️ الداتا اتحفظت، لكن حصلت مشكلة في الـBackup: "
-                        + backup_result["gdrive_error"]
+                        "⚠️ الداتا اتحفظت، لكن حصلت مشكلة في المزامنة السحابية: "
+                        + str(backup_result["error"])
                     )
 
 
@@ -1223,7 +1174,7 @@ elif choice == "📋  عرض واستعلام الطلبات":
 
     else:
 
-        search_col, filter_col = st.columns([2, 1])
+        search_col, filter_col = st.columns(2)
 
         with search_col:
             search_name = st.text_input(
@@ -1438,10 +1389,10 @@ elif choice == "⚙️  تحديث حالة طلب":
                 backup_result = backup_after_save()
 
                 st.success("✅ تم تحديث الطلب بنجاح.")
-                if backup_result["gdrive_error"]:
+                if not backup_result["success"]:
                     st.warning(
-                        "⚠️ التحديث اتحفظ، لكن حصلت مشكلة في الـBackup: "
-                        + backup_result["gdrive_error"]
+                        "⚠️ التحديث اتحفظ، لكن حصلت مشكلة في المزامنة السحابية: "
+                        + str(backup_result["error"])
                     )
                 st.rerun()
 
@@ -1508,10 +1459,10 @@ elif choice == "📝  المفكرة اليومية":
         st.success(
             f"✅ تم حفظ ملاحظة يوم {today_iso}."
         )
-        if backup_result["gdrive_error"]:
+        if not backup_result["success"]:
             st.warning(
-                "⚠️ الملاحظة اتحفظت، لكن حصلت مشكلة في الـBackup: "
-                + backup_result["gdrive_error"]
+                "⚠️ الملاحظة اتحفظت، لكن حصلت مشكلة في المزامنة السحابية: "
+                + str(backup_result["error"])
             )
 
         st.rerun()
@@ -1543,295 +1494,142 @@ elif choice == "📝  المفكرة اليومية":
 
 
 # =========================================================
-# 5. BACKUPS / GOOGLE DRIVE
+# 5. CLOUD SYNC
 # =========================================================
 
-elif choice == "💾  النسخ الاحتياطية":
+elif choice == "☁️  النسخ الاحتياطي (MEGA)":
 
     st.markdown(
         """
         <div class="panel">
-            <div class="panel-title">💾 حماية البيانات</div>
+            <div class="panel-title">☁️ حماية البيانات — MEGA</div>
             <div class="panel-sub">
-                قاعدة البيانات الأساسية محفوظة على الجهاز،
-                ويتم نسخها تلقائياً إلى Google Drive.
+                قاعدة البيانات بتتحفظ على السيرفر، وبعد كل حفظ بيتم رفع نسخة
+                تلقائياً لحسابك على MEGA عشان الداتا متضيعش أبداً —
+                ولو السيرفر اتمسح، التطبيق بيسترجعها لوحده.
             </div>
         </div>
         """,
         unsafe_allow_html=True
     )
 
-    # =====================================================
-    # GOOGLE DRIVE STATUS
-    # =====================================================
+    client = get_mega_client()
 
-    st.markdown(
-        """
-        <div class="panel">
-            <div class="panel-title">☁️ Google Drive</div>
-            <div class="panel-sub">
-                النظام يحاول العثور على Google Drive تلقائياً.
-                عند العثور عليه سيتم حفظ نسخة قاعدة البيانات داخله.
+    # -----------------------------------------------------
+    # NOT CONFIGURED -> show setup steps
+    # -----------------------------------------------------
+
+    if client is None:
+
+        st.error("❌ الربط مع MEGA غير مُهيأ.")
+
+        st.markdown(
+            """
+            <div class="panel">
+                <div class="panel-title">⚙️ خطوات التفعيل (3 خطوات بس)</div>
             </div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    gdrive_dir = get_gdrive_data_dir()
-
-    if gdrive_dir:
-
-        st.success(
-            "☁️ Google Drive متصل بنجاح.\n\n"
-            f"مكان حفظ الداتا:\n\n`{gdrive_dir}`"
+            """,
+            unsafe_allow_html=True
         )
 
-        # =================================================
-        # CURRENT DATABASE STATUS
-        # =================================================
+        st.markdown(
+            """
+**1)** اعمل حساب مجاني على [mega.nz](https://mega.nz) (بيديك 20 جيجا مجاناً).
+لو عندك حساب خلاص، عدّي للخطوة اللي بعدها.
+
+**2)** في Streamlit Cloud ← تطبيقك ← **Settings** ← **Secrets** ضيف الإيميل والباسورد بتاعك:
+
+```
+MEGA_EMAIL = "ايميلك@example.com"
+MEGA_PASSWORD = "الباسورد_بتاعك"
+```
+
+**3)** تأكد إن ملف `requirements.txt` فيه السطر ده:
+
+```
+mega.py
+```
+
+**4)** اعمل **Reboot** للتطبيق. خلاص كده ✅
+
+> 💡 لو ظهر خطأ في تسجيل الدخول لـ MEGA، غيّر إصدار Python بتاع التطبيق
+> لـ **3.11** من: Streamlit Cloud ← تطبيقك ← Settings ← Advanced settings.
+            """
+        )
+
+    else:
+
+        st.success("✅ MEGA متصل بنجاح.")
 
         db_file = FilePath(DB_NAME)
 
         if db_file.exists():
-
             db_size = db_file.stat().st_size / 1024
-
             st.info(
-                f"📦 قاعدة البيانات الحالية: "
-                f"`{DB_NAME}`\n\n"
+                f"📦 قاعدة البيانات الحالية: `{DB_NAME}` — "
                 f"الحجم: {db_size:.1f} KB"
             )
 
-        # =================================================
-        # MANUAL SYNC
-        # =================================================
+        remote = cloud_remote_info()
+
+        if remote and remote.get("found"):
+            st.success("☁️ توجد نسخة من الداتا على MEGA.")
+            if remote.get("modified"):
+                st.caption(f"آخر نسخة اتعملت: {remote['modified']}")
+        else:
+            st.info("📭 لسه مفيش نسخة على MEGA — هتتعمل مع أول حفظ.")
+
+        # ---------------------------------------------
+        # MANUAL UPLOAD
+        # ---------------------------------------------
 
         if st.button(
-            "☁️ مزامنة الداتا مع Google Drive الآن",
+            "☁️ رفع نسخة من الداتا لـ MEGA الآن",
             use_container_width=True
         ):
+            with st.spinner("⏳ جاري الرفع لـ MEGA..."):
+                result = cloud_upload_db()
+            if result["success"]:
+                st.success("✅ تم رفع نسخة الداتا لـ MEGA بنجاح.")
+            else:
+                st.error("❌ فشل الرفع:\n\n" + str(result["error"]))
 
-            try:
+        st.markdown("<br>", unsafe_allow_html=True)
 
-                result = sync_database_to_google_drive()
+        # ---------------------------------------------
+        # RESTORE
+        # ---------------------------------------------
 
-                if result["success"]:
-
-                    st.success(
-                        "✅ تم رفع أحدث نسخة من الداتا "
-                        "إلى Google Drive بنجاح."
-                    )
-
-                    st.caption(
-                        f"📁 الملف: `{result['path']}`"
-                    )
-
-                else:
-
-                    st.error(
-                        "❌ فشل رفع الداتا إلى Google Drive:\n\n"
-                        + str(result["error"])
-                    )
-
-            except Exception as exc:
-
-                st.error(
-                    "❌ حصل خطأ أثناء المزامنة:\n\n"
-                    + str(exc)
-                )
-
-    else:
+        st.markdown(
+            """
+            <div class="panel">
+                <div class="panel-title">🔄 استرجاع الداتا من MEGA</div>
+                <div class="panel-sub">
+                    لو السيرفر اتمسح أو حصلت مشكلة، استرجع آخر نسخة.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
         st.warning(
-            "⚠️ Google Drive غير متصل حالياً."
+            "⚠️ الاسترجاع هايستبدل قاعدة البيانات الحالية "
+            "بآخر نسخة على MEGA."
         )
 
-        st.info(
-            "تأكد أن Google Drive for Desktop شغال "
-            "وأن Google Drive ظاهر في This PC."
-        )
-
-    # =====================================================
-    # MANUAL GOOGLE DRIVE PATH
-    # =====================================================
-
-    with st.expander(
-        "⚙️ تحديد مكان Google Drive يدوياً"
-    ):
-
-        config = load_backup_config()
-
-        current_path = str(
-            config.get("gdrive_path", "")
-        ).strip()
-
-        manual_path = st.text_input(
-            "مسار Google Drive",
-            value=current_path,
-            placeholder="مثال: G:\\My Drive",
-            help=(
-                "اكتب مسار My Drive الموجود عندك في This PC. "
-                "مثال: G:\\My Drive"
-            )
-        )
-
-        col_save, col_clear = st.columns(2)
-
-        with col_save:
-
-            if st.button(
-                "💾 حفظ المسار",
-                use_container_width=True
-            ):
-
-                try:
-
-                    clean_path = manual_path.strip()
-
-                    if clean_path:
-
-                        test_folder = FilePath(clean_path)
-
-                        if not test_folder.exists():
-
-                            st.error(
-                                "❌ المسار ده مش موجود على الجهاز."
-                            )
-
-                        else:
-
-                            save_backup_config(
-                                clean_path
-                            )
-
-                            st.success(
-                                "✅ تم حفظ مسار Google Drive."
-                            )
-
-                            st.rerun()
-
-                    else:
-
-                        save_backup_config("")
-
-                        st.success(
-                            "✅ تم إلغاء المسار اليدوي "
-                            "والرجوع للاكتشاف التلقائي."
-                        )
-
-                        st.rerun()
-
-                except Exception as exc:
-
-                    st.error(
-                        "❌ حصل خطأ:\n\n"
-                        + str(exc)
-                    )
-
-        with col_clear:
-
-            if st.button(
-                "🗑️ إلغاء المسار اليدوي",
-                use_container_width=True
-            ):
-
-                save_backup_config("")
-
-                st.success(
-                    "✅ تم إلغاء المسار اليدوي."
-                )
-
+        if st.button(
+            "🔄 استرجاع الداتا من MEGA",
+            use_container_width=True
+        ):
+            with st.spinner("⏳ جاري التنزيل من MEGA..."):
+                result = cloud_download_db()
+            if result["success"]:
+                st.success("✅ تم استرجاع الداتا بنجاح.")
                 st.rerun()
-
-    # =====================================================
-    # RESTORE DATABASE
-    # =====================================================
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    st.markdown(
-        """
-        <div class="panel">
-            <div class="panel-title">🔄 استرجاع الداتا</div>
-            <div class="panel-sub">
-                يمكنك استرجاع قاعدة البيانات من نسخة موجودة
-                داخل Google Drive.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    if gdrive_dir:
-
-        try:
-
-            google_db = (
-                FilePath(gdrive_dir)
-                / "print_shop.db"
-            )
-
-            if google_db.exists():
-
-                modified_time = datetime.fromtimestamp(
-                    google_db.stat().st_mtime
-                ).strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                )
-
-                st.success(
-                    "☁️ توجد نسخة من الداتا على Google Drive."
-                )
-
-                st.caption(
-                    f"آخر تعديل: {modified_time}"
-                )
-
-                st.warning(
-                    "⚠️ الاسترجاع سيستبدل قاعدة البيانات "
-                    "الحالية الموجودة على الجهاز."
-                )
-
-                if st.button(
-                    "🔄 استرجاع الداتا من Google Drive",
-                    use_container_width=True
-                ):
-
-                    try:
-
-                        restore_backup(
-                            str(google_db)
-                        )
-
-                        st.success(
-                            "✅ تم استرجاع الداتا بنجاح."
-                        )
-
-                        st.info(
-                            "اعمل Refresh للتطبيق "
-                            "عشان تظهر البيانات المسترجعة."
-                        )
-
-                    except Exception as exc:
-
-                        st.error(
-                            "❌ فشل استرجاع الداتا:\n\n"
-                            + str(exc)
-                        )
-
             else:
+                st.error("❌ فشل الاسترجاع:\n\n" + str(result["error"]))
 
-                st.info(
-                    "📭 لا توجد نسخة داتا على Google Drive حالياً."
-                )
 
-        except Exception as exc:
-
-            st.error(
-                "❌ حصل خطأ أثناء قراءة Google Drive:\n\n"
-                + str(exc)
-            )
 # =========================================================
 # FOOTER
 # =========================================================
