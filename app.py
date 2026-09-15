@@ -263,6 +263,9 @@ def detect_google_drive_folder():
             FilePath(f"{letter}:\\Google Drive"),
         ])
 
+    # Google Drive for desktop commonly appears as a mounted drive
+    # (for example G:\\My Drive). Prefer an actually existing My Drive.
+
     for candidate in candidates:
         try:
             if candidate.exists() and candidate.is_dir():
@@ -278,8 +281,21 @@ if not DEFAULT_DRIVE_FOLDER:
     DEFAULT_DRIVE_FOLDER = detect_google_drive_folder()
 
 
+def _clean_drive_path(value):
+    """Normalize a Windows Google Drive path pasted with or without quotes."""
+    if not value:
+        return ""
+    value = str(value).strip()
+    # Users often paste paths as "G:\\My Drive\\ZERO BACKUPS".
+    # The quotes are not part of the Windows path.
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+        value = value[1:-1].strip()
+    value = value.replace("/", "\\")
+    return value
+
 def get_drive_folder():
     folder = st.session_state.get("google_drive_backup_folder", DEFAULT_DRIVE_FOLDER)
+    folder = _clean_drive_path(folder)
     return FilePath(folder).expanduser() if folder else None
 
 
@@ -1689,8 +1705,10 @@ elif choice == "☁️  النسخ الاحتياطي (Google Drive)":
         help="يفضل عمل فولدر اسمه ZERO BACKUPS داخل My Drive واستخدام مساره هنا."
     )
 
-    if drive_path.strip() != current_folder_text:
-        st.session_state["google_drive_backup_folder"] = drive_path.strip()
+    cleaned_drive_path = _clean_drive_path(drive_path)
+
+    if cleaned_drive_path != current_folder_text:
+        st.session_state["google_drive_backup_folder"] = cleaned_drive_path
         current_folder = get_drive_folder()
 
     if not drive_path.strip():
@@ -1700,8 +1718,10 @@ elif choice == "☁️  النسخ الاحتياطي (Google Drive)":
         )
     elif not current_folder or not current_folder.exists() or not current_folder.is_dir():
         st.error(
-            "❌ المسار غير موجود حالياً. تأكد أن Google Drive for desktop يعمل "
-            "وأن المسار الذي أدخلته هو فولدر موجود فعلاً."
+            "❌ التطبيق لم يجد الفولدر بهذا المسار على نفس جهاز التشغيل:\n\n"
+            f"`{current_folder}`\n\n"
+            "لو المسار ظاهر عندك في File Explorer مثل G:\\My Drive\\ZERO BACKUPS، "
+            "فلا تكتب علامات اقتباس حوله."
         )
     else:
         st.success(f"✅ فولدر Google Drive جاهز للنسخ:\n`{current_folder}`")
