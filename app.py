@@ -10,19 +10,16 @@ import streamlit as st
 # =========================================================
 # PAGE CONFIG
 # =========================================================
-
 st.set_page_config(
     page_title="ZERO Advertising | Management System",
     layout="wide",
-    initial_sidebar_state="collapsed",  # ✅ مهم جداً للموبايل
+    initial_sidebar_state="collapsed",  # مهم جداً للموبايل
 )
-
 
 # =========================================================
 # FILES
 # Put zero.jpg beside this Python file
 # =========================================================
-
 LOGO_PATH = "zero.jpg"
 
 
@@ -36,11 +33,9 @@ def image_base64(path):
 
 logo_b64 = image_base64(LOGO_PATH)
 
-
 # =========================================================
 # DATABASE
 # =========================================================
-
 DB_NAME = "print_shop.db"
 
 
@@ -89,25 +84,54 @@ def init_db():
 
 
 # =========================================================
-# CLOUD SYNC  (GitHub - private repo as cloud storage)
-# ------------------------------------------------------------
-# Setup (one time - about 2 minutes):
-#   1) On https://github.com create a PRIVATE repository,
-#      e.g. named: zero-data   (no README needed)
-#   2) Create a token:
-#      Your profile picture -> Settings -> Developer settings
-#      -> Personal access tokens -> Tokens (classic)
-#      -> Generate new token (classic)
-#      -> tick the "repo" scope -> Generate
-#      -> COPY the token (starts with ghp_...) - shown ONCE
-#   3) Streamlit Cloud -> your app -> Settings -> Secrets:
-#        GITHUB_TOKEN = "ghp_xxxxxxxxxxxx"
-#        GITHUB_REPO = "your-username/zero-data"
-#   4) Reboot. Done. (no extra packages needed - uses requests)
+# CLOUD SYNC  (Google Sheets - used as cloud storage)
+# ---------------------------------------------------------
+# Setup (one time - about 3 minutes):
+#
+# 1) On https://console.cloud.google.com create/select a project,
+#    then enable these two APIs:
+#       - Google Sheets API
+#       - Google Drive API
+#
+# 2) Create a Service Account:
+#       IAM & Admin -> Service Accounts -> Create Service Account
+#       Give it any name (e.g. zero-app)
+#       Then open it -> Keys -> Add Key -> Create new key -> JSON
+#       This downloads a JSON file - keep it safe.
+#
+# 3) On https://sheets.google.com create a new empty Spreadsheet,
+#    e.g. named: ZERO DATA
+#    Copy the Spreadsheet ID from the URL:
+#       https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/edit
+#
+# 4) Share that spreadsheet with the service account email
+#    (looks like: xxxx@xxxx.iam.gserviceaccount.com, found inside
+#    the JSON file under "client_email") - give it "Editor" access.
+#
+# 5) Streamlit Cloud -> your app -> Settings -> Secrets, add:
+#
+#    GSHEET_ID = "SPREADSHEET_ID_HERE"
+#
+#    [gcp_service_account]
+#    type = "service_account"
+#    project_id = "..."
+#    private_key_id = "..."
+#    private_key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+#    client_email = "...@....iam.gserviceaccount.com"
+#    client_id = "..."
+#    auth_uri = "https://accounts.google.com/o/oauth2/auth"
+#    token_uri = "https://oauth2.googleapis.com/token"
+#    auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
+#    client_x509_cert_url = "..."
+#
+#    (copy every value straight from the downloaded JSON file)
+#
+# 6) Add to requirements.txt:
+#       gspread
+#       google-auth
+#
+# 7) Reboot the app. Done.
 # =========================================================
-
-REMOTE_DB_NAME = "print_shop.db"
-
 
 def get_secret(key):
     try:
@@ -119,67 +143,110 @@ def get_secret(key):
     return os.environ.get(key, "")
 
 
-GITHUB_TOKEN = get_secret("GITHUB_TOKEN")
-GITHUB_REPO = get_secret("GITHUB_REPO").strip().strip("/")
+def get_secret_dict(key):
+    try:
+        value = st.secrets.get(key, None)
+        if value:
+            return dict(value)
+    except Exception:
+        pass
+    return None
 
 
-def github_configured():
-    return bool(GITHUB_TOKEN) and bool(GITHUB_REPO)
+GSHEET_ID = get_secret("GSHEET_ID").strip()
+GCP_SERVICE_ACCOUNT_INFO = get_secret_dict("gcp_service_account")
+
+SHEET_TABLES = ["customers", "orders", "daily_notes"]
 
 
-def github_headers():
-    return {
-        "Authorization": f"Bearer {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
+def sheets_configured():
+    return bool(GSHEET_ID) and bool(GCP_SERVICE_ACCOUNT_INFO)
 
 
-def github_file_url():
-    return (
-        f"https://api.github.com/repos/{GITHUB_REPO}"
-        f"/contents/{REMOTE_DB_NAME}"
+def get_gspread_client():
+    from google.oauth2.service_account import Credentials
+    import gspread
+
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive",
+    ]
+
+    creds = Credentials.from_service_account_info(
+        GCP_SERVICE_ACCOUNT_INFO,
+        scopes=scopes,
     )
 
+    return gspread.authorize(creds)
 
-def github_get_file():
+
+def get_spreadsheet():
+    client = get_gspread_client()
+    return client.open_by_key(GSHEET_ID)
+
+
+def _write_df_to_sheet(spreadsheet, sheet_name, df):
+    try:
+        ws = spreadsheet.worksheet(sheet_name)
+    except Exception:
+        ws = spreadsheet.add_worksheet(
+            title=sheet_name,
+            rows=max(len(df) + 10, 100),
+            cols=max(len(df.columns) + 2, 10),
+        )
+
+    ws.clear()
+
+    if df.empty:
+        ws.update(
+            values=[list(df.columns)],
+            range_name="A1",
+        )
+        return
+
+    df_clean = df.copy().fillna("")
+    values = [df_clean.columns.tolist()] + df_clean.astype(str).values.tolist()
+
+    ws.update(values=values, range_name="A1")
+
+
+def _read_sheet_to_df(spreadsheet, sheet_name):
+    try:
+        ws = spreadsheet.worksheet(sheet_name)
+    except Exception:
+        return pd.DataFrame()
+
+    records = ws.get_all_records()
+    return pd.DataFrame(records)
+
+
+def _coerce_numeric(df, int_cols=None, float_cols=None):
+    int_cols = int_cols or []
+    float_cols = float_cols or []
+
+    for col in int_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
+
+    for col in float_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+
+    return df
+
+
+def sheets_upload_db():
     """
-    Returns the file info dict from GitHub (has 'sha'),
-    None if the file does not exist yet,
-    or raises RuntimeError with the real reason on failure.
-    """
-    import requests
-
-    response = requests.get(
-        github_file_url(),
-        headers=github_headers(),
-        timeout=30,
-    )
-
-    if response.status_code == 200:
-        return response.json()
-
-    if response.status_code == 404:
-        return None
-
-    raise RuntimeError(
-        f"GitHub رد بالكود {response.status_code}: "
-        f"{response.text[:300]}"
-    )
-
-
-def cloud_upload_db():
-    """
-    Uploads the local SQLite database file to the GitHub repo.
+    Pushes the local SQLite tables to the Google Sheet.
     Called automatically after every successful save.
-    Only ONE file is kept (updated in place via its sha).
+    Each table gets its own worksheet tab, fully overwritten.
     """
     result = {"success": False, "error": None}
 
-    if not github_configured():
+    if not sheets_configured():
         result["error"] = (
-            "الربط مع GitHub غير مُهيأ — راجع GITHUB_TOKEN و GITHUB_REPO "
-            "في Secrets واعمل Reboot."
+            "الربط مع Google Sheets غير مُهيأ — راجع GSHEET_ID و "
+            "gcp_service_account في Secrets واعمل Reboot."
         )
         return result
 
@@ -188,82 +255,18 @@ def cloud_upload_db():
         return result
 
     try:
-        import requests
+        conn = get_connection()
+        customers_df = pd.read_sql_query("SELECT * FROM customers", conn)
+        orders_df = pd.read_sql_query("SELECT * FROM orders", conn)
+        notes_df = pd.read_sql_query("SELECT * FROM daily_notes", conn)
+        conn.close()
 
-        body = {
-            "message": "chore: backup database",
-            "content": base64.b64encode(
-                FilePath(DB_NAME).read_bytes()
-            ).decode("utf-8"),
-        }
+        spreadsheet = get_spreadsheet()
 
-        # if file already exists we must send its sha to update it
-        try:
-            existing = github_get_file()
-        except Exception:
-            existing = None
+        _write_df_to_sheet(spreadsheet, "customers", customers_df)
+        _write_df_to_sheet(spreadsheet, "orders", orders_df)
+        _write_df_to_sheet(spreadsheet, "daily_notes", notes_df)
 
-        if existing and existing.get("sha"):
-            body["sha"] = existing["sha"]
-
-        response = requests.put(
-            github_file_url(),
-            headers=github_headers(),
-            json=body,
-            timeout=60,
-        )
-
-        if response.status_code in (200, 201):
-            result["success"] = True
-        else:
-            result["error"] = (
-                f"GitHub رفض الرفع بالكود {response.status_code}: "
-                f"{response.text[:300]}"
-            )
-
-    except Exception as exc:
-        result["error"] = str(exc)
-
-    return result
-
-
-def cloud_download_db():
-    """
-    Downloads the database from the GitHub repo
-    and replaces the local file (with integrity check).
-    """
-    result = {"success": False, "error": None}
-
-    if not github_configured():
-        result["error"] = (
-            "الربط مع GitHub غير مُهيأ — راجع Secrets واعمل Reboot."
-        )
-        return result
-
-    try:
-        existing = github_get_file()
-
-        if not existing:
-            result["error"] = "مفيش نسخة داتا على GitHub."
-            return result
-
-        import base64 as _b64
-
-        raw = _b64.b64decode(existing["content"])
-
-        tmp_name = DB_NAME + ".tmp"
-        FilePath(tmp_name).write_bytes(raw)
-
-        # integrity check before replacing
-        test = sqlite3.connect(tmp_name)
-        try:
-            integrity = test.execute("PRAGMA integrity_check").fetchone()[0]
-            if integrity != "ok":
-                raise ValueError("نسخة قاعدة البيانات على GitHub تالفة.")
-        finally:
-            test.close()
-
-        os.replace(tmp_name, DB_NAME)
         result["success"] = True
 
     except Exception as exc:
@@ -272,40 +275,92 @@ def cloud_download_db():
     return result
 
 
-def cloud_remote_info():
-    """Returns info about the remote backup file, or None."""
-    if not github_configured():
-        return None
+def sheets_download_db():
+    """
+    Downloads the data from the Google Sheet and rebuilds
+    the local SQLite database from it.
+    """
+    result = {"success": False, "error": None}
+
+    if not sheets_configured():
+        result["error"] = (
+            "الربط مع Google Sheets غير مُهيأ — راجع Secrets واعمل Reboot."
+        )
+        return result
+
     try:
-        existing = github_get_file()
-        if not existing:
-            return {"found": False}
+        spreadsheet = get_spreadsheet()
 
-        modified = ""
+        customers_df = _read_sheet_to_df(spreadsheet, "customers")
+        orders_df = _read_sheet_to_df(spreadsheet, "orders")
+        notes_df = _read_sheet_to_df(spreadsheet, "daily_notes")
 
-        # try to get last commit date for this file
-        try:
-            import requests
+        if customers_df.empty and orders_df.empty and notes_df.empty:
+            result["error"] = "مفيش داتا على Google Sheets لسه."
+            return result
 
-            r = requests.get(
-                f"https://api.github.com/repos/{GITHUB_REPO}/commits",
-                headers=github_headers(),
-                params={"path": REMOTE_DB_NAME, "per_page": 1},
-                timeout=30,
+        customers_df = _coerce_numeric(customers_df, int_cols=["customer_id"])
+        orders_df = _coerce_numeric(
+            orders_df,
+            int_cols=["order_id", "customer_id"],
+            float_cols=["total_cost", "deposit"],
+        )
+        notes_df = _coerce_numeric(notes_df, int_cols=["note_id"])
+
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DROP TABLE IF EXISTS customers")
+        cursor.execute("DROP TABLE IF EXISTS orders")
+        cursor.execute("DROP TABLE IF EXISTS daily_notes")
+        conn.commit()
+        conn.close()
+
+        init_db()
+
+        conn = get_connection()
+
+        if not customers_df.empty:
+            customers_df.to_sql(
+                "customers", conn, if_exists="append", index=False
             )
-            if r.status_code == 200:
-                commits = r.json()
-                if commits:
-                    modified = (
-                        commits[0]
-                        .get("commit", {})
-                        .get("committer", {})
-                        .get("date", "")
-                    )
-        except Exception:
-            pass
 
-        return {"found": True, "modified": modified}
+        if not orders_df.empty:
+            orders_df.to_sql(
+                "orders", conn, if_exists="append", index=False
+            )
+
+        if not notes_df.empty:
+            notes_df.to_sql(
+                "daily_notes", conn, if_exists="append", index=False
+            )
+
+        conn.commit()
+        conn.close()
+
+        result["success"] = True
+
+    except Exception as exc:
+        result["error"] = str(exc)
+
+    return result
+
+
+def sheets_remote_info():
+    """Returns info about the remote backup, or None."""
+    if not sheets_configured():
+        return None
+
+    try:
+        spreadsheet = get_spreadsheet()
+
+        found = False
+        try:
+            ws = spreadsheet.worksheet("orders")
+            found = len(ws.get_all_values()) > 1
+        except Exception:
+            found = False
+
+        return {"found": found, "url": spreadsheet.url}
 
     except Exception:
         return None
@@ -314,32 +369,29 @@ def cloud_remote_info():
 def backup_after_save():
     """
     Compatibility function used by the rest of the application.
-    Every successful save automatically syncs to GitHub.
+    Every successful save automatically syncs to Google Sheets.
     """
-    return cloud_upload_db()
+    return sheets_upload_db()
 
 
 def restore_from_cloud():
-    return cloud_download_db()
+    return sheets_download_db()
 
 
 # =========================================================
 # FIRST RUN:
-# If there is no local database but a Drive copy exists -> restore it
+# If there is no local database but a Sheets copy exists -> restore it
 # =========================================================
-
 if not FilePath(DB_NAME).exists():
-    info = cloud_remote_info()
+    info = sheets_remote_info()
     if info and info.get("found"):
-        cloud_download_db()
+        sheets_download_db()
 
 init_db()
-
 
 # =========================================================
 # CSS / PREMIUM DESIGN
 # =========================================================
-
 def set_custom_design():
 
     background_css = ""
@@ -442,7 +494,6 @@ header {{
    SIDEBAR
    ========================================================= */
 
-/* ✅ مهم: يمنع نصوص السايدبار من الظهور لما تكون مقفولة */
 section[data-testid="stSidebar"] {{
     background:
         linear-gradient(180deg, #070c15 0%, #0a101b 55%, #060a12 100%)
@@ -758,7 +809,7 @@ hr {{
 
 
 /* =========================================================
-   ✅ MOBILE FIXES
+   MOBILE FIXES
    ========================================================= */
 
 @media (max-width: 768px) {{
@@ -771,7 +822,6 @@ hr {{
         font-size: 17px;
     }}
 
-    /* الأعمدة تترص فوق بعض على الموبايل */
     div[data-testid="stHorizontalBlock"] {{
         flex-wrap: wrap !important;
         gap: 0.6rem;
@@ -783,7 +833,6 @@ hr {{
         width: 100% !important;
     }}
 
-    /* كروت الإحصائيات كروتين في الصف */
     .stat-card {{
         min-height: 95px;
         padding: 14px 15px;
@@ -793,25 +842,21 @@ hr {{
         font-size: 22px;
     }}
 
-    /* إخفاء أي محتوى طالع من السايدبار المقفول */
     section[data-testid="stSidebar"][aria-expanded="false"] {{
         visibility: hidden;
     }}
 }}
 
-</style>
-        """,
+</style>  """,
         unsafe_allow_html=True,
     )
 
 
 set_custom_design()
 
-
 # =========================================================
 # HELPERS
 # =========================================================
-
 def calculate_payment(total, deposit):
     if total > 0 and deposit >= total:
         return "تم الدفع بالكامل"
@@ -897,7 +942,6 @@ def get_recent_notes(limit=5):
 # =========================================================
 # SIDEBAR
 # =========================================================
-
 with st.sidebar:
 
     if logo_b64:
@@ -927,7 +971,7 @@ with st.sidebar:
         "📋  عرض واستعلام الطلبات",
         "⚙️  تحديث حالة طلب",
         "📝  المفكرة اليومية",
-        "☁️  النسخ الاحتياطي (GitHub)",
+        "☁️  النسخ الاحتياطي (Google Sheets)",
     ]
 
     choice = st.selectbox(
@@ -971,11 +1015,9 @@ with st.sidebar:
             unsafe_allow_html=True
         )
 
-
 # =========================================================
 # TOP HEADER
 # =========================================================
-
 today_text = date.today().strftime("%Y-%m-%d")
 
 st.markdown(
@@ -993,11 +1035,9 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-
 # =========================================================
 # DASHBOARD STATS
 # =========================================================
-
 total_orders, completed, in_progress, total_sales = get_statistics()
 
 c1, c2, c3, c4 = st.columns(4)
@@ -1024,11 +1064,9 @@ for col, (icon, title, value) in zip([c1, c2, c3, c4], stats):
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-
 # =========================================================
 # 1. NEW ORDER
 # =========================================================
-
 if choice == "➕  تسجيل طلب جديد":
 
     st.markdown(
@@ -1175,11 +1213,9 @@ if choice == "➕  تسجيل طلب جديد":
                         + str(backup_result["error"])
                     )
 
-
 # =========================================================
 # 2. ORDERS
 # =========================================================
-
 elif choice == "📋  عرض واستعلام الطلبات":
 
     st.markdown(
@@ -1271,11 +1307,9 @@ elif choice == "📋  عرض واستعلام الطلبات":
 
         st.caption(f"عدد النتائج: {len(df)}")
 
-
 # =========================================================
 # 3. UPDATE ORDER
 # =========================================================
-
 elif choice == "⚙️  تحديث حالة طلب":
 
     st.markdown(
@@ -1447,11 +1481,9 @@ elif choice == "⚙️  تحديث حالة طلب":
 
     conn.close()
 
-
 # =========================================================
 # 4. DAILY NOTEBOOK
 # =========================================================
-
 elif choice == "📝  المفكرة اليومية":
 
     st.markdown(
@@ -1541,20 +1573,18 @@ elif choice == "📝  المفكرة اليومية":
             ):
                 st.write(row["note_text"])
 
-
 # =========================================================
-# 5. CLOUD SYNC
+# 5. CLOUD SYNC (Google Sheets)
 # =========================================================
-
-elif choice == "☁️  النسخ الاحتياطي (GitHub)":
+elif choice == "☁️  النسخ الاحتياطي (Google Sheets)":
 
     st.markdown(
         """
         <div class="panel">
-            <div class="panel-title">☁️ حماية البيانات — GitHub</div>
+            <div class="panel-title">☁️ حماية البيانات — Google Sheets</div>
             <div class="panel-sub">
                 قاعدة البيانات بتتحفظ على السيرفر، وبعد كل حفظ بيتم رفع نسخة
-                تلقائياً لريبو خاص على حسابك في GitHub عشان الداتا متضيعش أبداً —
+                تلقائياً لملف Google Sheets عشان الداتا متضيعش أبداً —
                 ولو السيرفر اتمسح، التطبيق بيسترجعها لوحده.
             </div>
         </div>
@@ -1566,14 +1596,14 @@ elif choice == "☁️  النسخ الاحتياطي (GitHub)":
     # NOT CONFIGURED -> show setup steps
     # -----------------------------------------------------
 
-    if not github_configured():
+    if not sheets_configured():
 
-        st.error("❌ الربط مع GitHub غير مُهيأ.")
+        st.error("❌ الربط مع Google Sheets غير مُهيأ.")
 
         st.markdown(
             """
             <div class="panel">
-                <div class="panel-title">⚙️ خطوات التفعيل (دقيقتين بالظبط)</div>
+                <div class="panel-title">⚙️ خطوات التفعيل (3 دقايق تقريباً)</div>
             </div>
             """,
             unsafe_allow_html=True
@@ -1581,40 +1611,55 @@ elif choice == "☁️  النسخ الاحتياطي (GitHub)":
 
         st.markdown(
             """
-**1)** على [github.com](https://github.com) اعمل **Repo جديد خاص (Private)**:
+1) على console.cloud.google.com اعمل مشروع (Project) جديد أو استخدم
+   واحد موجود، وفعّل الخدمتين دول من قسم APIs & Services:
+   - Google Sheets API
+   - Google Drive API
 
-- كليك يمين فوق على صورتك ← **Your repositories** ← **New**.
-- الاسم: `zero-data`
-- اختار **Private** ⚠️ (محدش يشوف الداتا غيرك).
-- ماتعلمش على أي حاجة تانية ← **Create repository**.
+2) اعمل Service Account:
+   IAM & Admin ← Service Accounts ← Create Service Account.
+   اديله أي اسم (مثلاً zero-app) ← Create and Continue ← Done.
+   بعدين افتحه ← تبويب Keys ← Add Key ← Create new key ← اختار JSON.
+   هيتنزلك ملف JSON فيه بيانات الاتصال - خليه محفوظ عندك.
 
-**2)** اعمل الـ Token:
+3) على sheets.google.com اعمل Google Sheet فاضي جديد
+   (مثلاً اسمه: ZERO DATA).
+   من رابط الشيت انسخ الـ Spreadsheet ID، وهو الجزء ده من الرابط:
+   https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/edit
 
-- كليك على صورتك فوق ← **Settings** ← تحت خالص **Developer settings**.
-- **Personal access tokens** ← **Tokens (classic)** ← **Generate new token** ← **Generate new token (classic)**.
-- **Note**: اكتب أي اسم (مثلاً zero-app).
-- الصلاحيات: علّم على **repo** بس.
-- **Expiration**: No expiration (أو اللي يناسبك).
-- دوس **Generate token** ← **انسخ التوكن فوراً** (بيبان مرة واحدة بس، شكله `ghp_xxxxxxxx`).
+4) شارك (Share) الشيت مع إيميل الـ Service Account
+   (شكله: xxxx@xxxx.iam.gserviceaccount.com، تلاقيه جوه ملف الـ JSON
+   في حقل client_email) وادّيله صلاحية Editor.
 
-**3)** في Streamlit Cloud ← تطبيك ← **Settings** ← **Secrets** ضيف:
+5) في Streamlit Cloud ← تطبيقك ← Settings ← Secrets ضيف:
 
-```
-GITHUB_TOKEN = "ghp_xxxxxxxxxxxxxxxx"
-GITHUB_REPO = "اسم_المستخدم_بتاعك/zero-data"
-```
+GSHEET_ID = "SPREADSHEET_ID_بتاعك"
 
-> ⚠️ مهم: `GITHUB_REPO` لازم يكون بالظبط بالشكل ده: `اليوزر نيم / اسم الريبو` — مثال: `ahmed/zero-data`
+[gcp_service_account]
+type = "service_account"
+project_id = "..."
+private_key_id = "..."
+private_key = "-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n"
+client_email = "...@....iam.gserviceaccount.com"
+client_id = "..."
+auth_uri = "https://accounts.google.com/o/oauth2/auth"
+token_uri = "https://oauth2.googleapis.com/token"
+auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
+client_x509_cert_url = "..."
 
-**4)** اعمل **Reboot** للتطبيق. خلاص كده ✅
+> ⚠️ انسخ كل القيم دي حرفياً من ملف الـ JSON اللي نزلته.
 
-> مفيش أي مكتبة جديدة مطلوبة — الكود شغال مباشرة.
-            """
+6) في requirements.txt ضيف السطرين دول:
+gspread
+google-auth
+
+7) اعمل Reboot للتطبيق. خلاص كده ✅
+"""
         )
 
     else:
 
-        st.success("✅ GitHub متصل بنجاح.")
+        st.success("✅ Google Sheets متصل بنجاح.")
 
         db_file = FilePath(DB_NAME)
 
@@ -1625,27 +1670,27 @@ GITHUB_REPO = "اسم_المستخدم_بتاعك/zero-data"
                 f"الحجم: {db_size:.1f} KB"
             )
 
-        remote = cloud_remote_info()
+        remote = sheets_remote_info()
 
         if remote and remote.get("found"):
-            st.success("☁️ توجد نسخة من الداتا على GitHub.")
-            if remote.get("modified"):
-                st.caption(f"آخر نسخة اتعملت: {remote['modified']}")
+            st.success("☁️ توجد نسخة من الداتا على Google Sheets.")
+            if remote.get("url"):
+                st.markdown(f"[فتح الشيت]({remote['url']})")
         else:
-            st.info("📭 لسه مفيش نسخة على GitHub — هتتعمل مع أول حفظ.")
+            st.info("📭 لسه مفيش نسخة على Google Sheets — هتتعمل مع أول حفظ.")
 
         # ---------------------------------------------
         # MANUAL UPLOAD
         # ---------------------------------------------
 
         if st.button(
-            "☁️ رفع نسخة من الداتا لـ GitHub الآن",
+            "☁️ رفع نسخة من الداتا لـ Google Sheets الآن",
             use_container_width=True
         ):
-            with st.spinner("⏳ جاري الرفع لـ GitHub..."):
-                result = cloud_upload_db()
+            with st.spinner("⏳ جاري الرفع لـ Google Sheets..."):
+                result = sheets_upload_db()
             if result["success"]:
-                st.success("✅ تم رفع نسخة الداتا لـ GitHub بنجاح.")
+                st.success("✅ تم رفع نسخة الداتا لـ Google Sheets بنجاح.")
             else:
                 st.error("❌ فشل الرفع:\n\n" + str(result["error"]))
 
@@ -1658,7 +1703,7 @@ GITHUB_REPO = "اسم_المستخدم_بتاعك/zero-data"
         st.markdown(
             """
             <div class="panel">
-                <div class="panel-title">🔄 استرجاع الداتا من GitHub</div>
+                <div class="panel-title">🔄 استرجاع الداتا من Google Sheets</div>
                 <div class="panel-sub">
                     لو السيرفر اتمسح أو حصلت مشكلة، استرجع آخر نسخة.
                 </div>
@@ -1669,26 +1714,24 @@ GITHUB_REPO = "اسم_المستخدم_بتاعك/zero-data"
 
         st.warning(
             "⚠️ الاسترجاع هايستبدل قاعدة البيانات الحالية "
-            "بآخر نسخة على GitHub."
+            "بآخر نسخة على Google Sheets."
         )
 
         if st.button(
-            "🔄 استرجاع الداتا من GitHub",
+            "🔄 استرجاع الداتا من Google Sheets",
             use_container_width=True
         ):
-            with st.spinner("⏳ جاري التنزيل من GitHub..."):
-                result = cloud_download_db()
+            with st.spinner("⏳ جاري التنزيل من Google Sheets..."):
+                result = sheets_download_db()
             if result["success"]:
                 st.success("✅ تم استرجاع الداتا بنجاح.")
                 st.rerun()
             else:
                 st.error("❌ فشل الاسترجاع:\n\n" + str(result["error"]))
 
-
 # =========================================================
 # FOOTER
 # =========================================================
-
 st.markdown(
     """
     <div class="footer">
