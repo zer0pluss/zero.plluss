@@ -84,54 +84,157 @@ def init_db():
 
 
 # =========================================================
-# CLOUD SYNC  (Google Sheets - used as cloud storage)
+# BACKUP TO GOOGLE DRIVE DESKTOP
 # ---------------------------------------------------------
-# Setup (one time - about 3 minutes):
-#
-# 1) On https://console.cloud.google.com create/select a project,
-#    then enable these two APIs:
-#       - Google Sheets API
-#       - Google Drive API
-#
-# 2) Create a Service Account:
-#       IAM & Admin -> Service Accounts -> Create Service Account
-#       Give it any name (e.g. zero-app)
-#       Then open it -> Keys -> Add Key -> Create new key -> JSON
-#       This downloads a JSON file - keep it safe.
-#
-# 3) On https://sheets.google.com create a new empty Spreadsheet,
-#    e.g. named: ZERO DATA
-#    Copy the Spreadsheet ID from the URL:
-#       https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/edit
-#
-# 4) Share that spreadsheet with the service account email
-#    (looks like: xxxx@xxxx.iam.gserviceaccount.com, found inside
-#    the JSON file under "client_email") - give it "Editor" access.
-#
-# 5) Streamlit Cloud -> your app -> Settings -> Secrets, add:
-#
-#    GSHEET_ID = "SPREADSHEET_ID_HERE"
-#
-#    [gcp_service_account]
-#    type = "service_account"
-#    project_id = "..."
-#    private_key_id = "..."
-#    private_key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
-#    client_email = "...@....iam.gserviceaccount.com"
-#    client_id = "..."
-#    auth_uri = "https://accounts.google.com/o/oauth2/auth"
-#    token_uri = "https://oauth2.googleapis.com/token"
-#    auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
-#    client_x509_cert_url = "..."
-#
-#    (copy every value straight from the downloaded JSON file)
-#
-# 6) Add to requirements.txt:
-#       gspread
-#       google-auth
-#
-# 7) Reboot the app. Done.
+# No Google Cloud, Service Account, OAuth, API keys, or paid
+# service is needed here. The app copies verified SQLite
+# snapshots into the normal Google Drive for desktop folder.
+# Google Drive for desktop then syncs those files to your
+# personal Google Drive account.
 # =========================================================
+import shutil
+import tempfile
+
+
+# ===== Robust Google Drive Desktop Backup =====
+DRIVE_BACKUP_FOLDER_NAME = "ZERO BACKUPS"
+DRIVE_MAX_BACKUPS = 30
+
+def _drive_roots():
+    home = Path.home()
+    roots = [
+        home / "Google Drive" / "My Drive",
+        home / "My Drive",
+    ]
+    for letter in "DEFGHIJKLMNOPQRSTUVWXYZ":
+        roots += [Path(f"{letter}:/My Drive")]
+    seen, result = set(), []
+    for p in roots:
+        key = str(p).lower()
+        if key not in seen and p.exists():
+            seen.add(key)
+            result.append(p)
+    return result
+
+def get_drive_backup_dir():
+    """Find My Drive locally and create ZERO BACKUPS automatically."""
+    for root in _drive_roots():
+        if root.exists() and root.is_dir():
+            folder = root / DRIVE_BACKUP_FOLDER_NAME
+            folder.mkdir(parents=True, exist_ok=True)
+            return folder
+    return None
+
+def _verify_sqlite(path):
+    try:
+        with sqlite3.connect(str(path), timeout=10) as conn:
+            result = conn.execute("PRAGMA integrity_check").fetchone()
+        return bool(result and str(result[0]).lower() == "ok")
+    except Exception:
+        return False
+
+def backup_database_to_drive(db_path="print_shop.db"):
+    db = Path(db_path)
+    if not db.exists():
+        return False, "قاعدة البيانات المحلية غير موجودة."
+
+    if not _verify_sqlite(db):
+        return False, "قاعدة البيانات المحلية لم تجتز فحص SQLite."
+
+    folder = get_drive_backup_dir()
+    if folder is None:
+        return False, "Google Drive for desktop غير موجود أو My Drive غير ظاهر على الجهاز."
+
+    target = folder / f"print_shop_backup_{datetime.now():%Y-%m-%d_%H-%M-%S}.db"
+    try:
+        shutil.copy2(db, target)
+
+        # Do not report success until the copied file is verified.
+        if not target.exists() or target.stat().st_size != db.stat().st_size:
+            target.unlink(missing_ok=True)
+            return False, "فشل التحقق من نسخة Drive."
+
+        if not _verify_sqlite(target):
+            target.unlink(missing_ok=True)
+            return False, "نسخة Drive موجودة لكن فحص SQLite فشل."
+
+        backups = sorted(folder.glob("print_shop_backup_*.db"),
+                         key=lambda p: p.stat().st_mtime, reverse=True)
+        for old in backups[DRIVE_MAX_BACKUPS:]:
+            try:
+                old.unlink()
+            except Exception:
+                pass
+
+        return True, f"تم الـBackup بنجاح: {target.name}"
+    except Exception as e:
+        return False, f"فشل الـBackup: {e}"
+
+def list_drive_backups():
+    folder = get_drive_backup_dir()
+    if folder is None:
+        return []
+    return sorted(folder.glob("print_shop_backup_*.db"),
+                  key=lambda p: p.stat().st_mtime, reverse=True)
+
+def restore_database_from_drive(backup_path, db_path="print_shop.db"):
+    backup = Path(backup_path)
+    db = Path(db_path)
+
+    if not backup.exists() or not _verify_sqlite(backup):
+        return False, "نسخة الـBackup غير موجودة أو غير سليمة."
+
+    try:
+        if db.exists():
+            safety = db.with_name(
+                f"{db.stem}_before_restore_{datetime.now():%Y-%m-%d_%H-%M-%S}{db.suffix}"
+            )
+            shutil.copy2(db, safety)
+
+        temp = db.with_name(db.stem + "_restore_tmp.db")
+        shutil.copy2(backup, temp)
+        if not _verify_sqlite(temp):
+            temp.unlink(missing_ok=True)
+            return False, "فشل فحص النسخة قبل الاستعادة."
+
+        os.replace(temp, db)
+        return True, f"تمت الاستعادة بنجاح من: {backup.name}"
+    except Exception as e:
+        return False, f"فشل الـRestore: {e}"
+
+def render_drive_backup_ui():
+    st.subheader("☁️ Backup to Google Drive")
+    st.caption("يعمل من خلال Google Drive for desktop — بدون Google Cloud أو Service Account.")
+
+    folder = get_drive_backup_dir()
+    if folder is None:
+        st.error("Google Drive غير جاهز على هذا الكمبيوتر.")
+        st.info("افتح Google Drive for desktop وسجّل الدخول، ثم تأكد أن My Drive ظاهر في File Explorer.")
+        return
+
+    st.success(f"Google Drive جاهز ✅\n`{folder}`")
+
+    if st.button("☁️ Backup to Drive", use_container_width=True):
+        ok, msg = backup_database_to_drive("print_shop.db")
+        (st.success if ok else st.error)(msg)
+
+    backups = list_drive_backups()
+    if backups:
+        labels = [f"{p.name} — {p.stat().st_size:,} bytes" for p in backups]
+        selected_label = st.selectbox("اختر نسخة للاستعادة", labels)
+        selected = backups[labels.index(selected_label)]
+        if st.button("♻️ Restore selected backup", use_container_width=True):
+            ok, msg = restore_database_from_drive(selected)
+            (st.success if ok else st.error)(msg)
+            if ok:
+                st.warning("أعد تشغيل التطبيق بعد الاستعادة.")
+    else:
+        st.info("لا توجد نسخ احتياطية حتى الآن.")
+
+
+BACKUP_PREFIX = "ZERO_backup_"
+BACKUP_RETENTION = 30
+
 
 def get_secret(key):
     try:
@@ -143,249 +246,232 @@ def get_secret(key):
     return os.environ.get(key, "")
 
 
-def get_secret_dict(key):
+def detect_google_drive_folder():
+    """Find common Google Drive for desktop locations on Windows."""
+    candidates = []
+    user_home = os.environ.get("USERPROFILE") or str(FilePath.home())
+
+    candidates.extend([
+        FilePath(user_home) / "Google Drive" / "My Drive",
+        FilePath(user_home) / "My Drive",
+        FilePath(user_home) / "Google Drive",
+    ])
+
+    for letter in "DEFGHIJKLMNOPQRSTUVWXYZ":
+        candidates.extend([
+            FilePath(f"{letter}:\\My Drive"),
+            FilePath(f"{letter}:\\Google Drive"),
+        ])
+
+    for candidate in candidates:
+        try:
+            if candidate.exists() and candidate.is_dir():
+                return str(candidate)
+        except Exception:
+            pass
+
+    return ""
+
+
+DEFAULT_DRIVE_FOLDER = get_secret("GOOGLE_DRIVE_BACKUP_FOLDER").strip()
+if not DEFAULT_DRIVE_FOLDER:
+    DEFAULT_DRIVE_FOLDER = detect_google_drive_folder()
+
+
+def get_drive_folder():
+    folder = st.session_state.get("google_drive_backup_folder", DEFAULT_DRIVE_FOLDER)
+    return FilePath(folder).expanduser() if folder else None
+
+
+def drive_configured():
+    folder = get_drive_folder()
+    return bool(folder and folder.exists() and folder.is_dir())
+
+
+def drive_list_backups():
+    folder = get_drive_folder()
+    if not folder or not folder.exists():
+        return []
+
+    files = []
     try:
-        value = st.secrets.get(key, None)
-        if value:
-            return dict(value)
+        for item in folder.iterdir():
+            if item.is_file() and item.name.startswith(BACKUP_PREFIX) and item.suffix.lower() == ".db":
+                stat = item.stat()
+                files.append({
+                    "id": str(item),
+                    "name": item.name,
+                    "size": str(stat.st_size),
+                    "createdTime": datetime.fromtimestamp(stat.st_ctime).isoformat(),
+                    "modifiedTime": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                })
     except Exception:
-        pass
-    return None
+        return []
+
+    return sorted(files, key=lambda x: x.get("createdTime", ""), reverse=True)
 
 
-GSHEET_ID = get_secret("GSHEET_ID").strip()
-GCP_SERVICE_ACCOUNT_INFO = get_secret_dict("gcp_service_account")
-
-SHEET_TABLES = ["customers", "orders", "daily_notes"]
-
-
-def sheets_configured():
-    return bool(GSHEET_ID) and bool(GCP_SERVICE_ACCOUNT_INFO)
-
-
-def get_gspread_client():
-    from google.oauth2.service_account import Credentials
-    import gspread
-
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive",
-    ]
-
-    creds = Credentials.from_service_account_info(
-        GCP_SERVICE_ACCOUNT_INFO,
-        scopes=scopes,
-    )
-
-    return gspread.authorize(creds)
-
-
-def get_spreadsheet():
-    client = get_gspread_client()
-    return client.open_by_key(GSHEET_ID)
-
-
-def _write_df_to_sheet(spreadsheet, sheet_name, df):
+def _verify_sqlite(path):
+    conn = None
     try:
-        ws = spreadsheet.worksheet(sheet_name)
+        conn = sqlite3.connect(str(path), timeout=30)
+        result = conn.execute("PRAGMA integrity_check").fetchone()
+        return bool(result and result[0] == "ok")
     except Exception:
-        ws = spreadsheet.add_worksheet(
-            title=sheet_name,
-            rows=max(len(df) + 10, 100),
-            cols=max(len(df.columns) + 2, 10),
-        )
-
-    ws.clear()
-
-    if df.empty:
-        ws.update(
-            values=[list(df.columns)],
-            range_name="A1",
-        )
-        return
-
-    df_clean = df.copy().fillna("")
-    values = [df_clean.columns.tolist()] + df_clean.astype(str).values.tolist()
-
-    ws.update(values=values, range_name="A1")
+        return False
+    finally:
+        if conn:
+            conn.close()
 
 
-def _read_sheet_to_df(spreadsheet, sheet_name):
-    try:
-        ws = spreadsheet.worksheet(sheet_name)
-    except Exception:
-        return pd.DataFrame()
+def drive_upload_backup():
+    """Create a verified snapshot in the local Drive-synced folder."""
+    result = {"success": False, "error": None, "file_name": None}
+    folder = get_drive_folder()
+    db_file = FilePath(DB_NAME)
 
-    records = ws.get_all_records()
-    return pd.DataFrame(records)
-
-
-def _coerce_numeric(df, int_cols=None, float_cols=None):
-    int_cols = int_cols or []
-    float_cols = float_cols or []
-
-    for col in int_cols:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
-
-    for col in float_cols:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
-
-    return df
-
-
-def sheets_upload_db():
-    """
-    Pushes the local SQLite tables to the Google Sheet.
-    Called automatically after every successful save.
-    Each table gets its own worksheet tab, fully overwritten.
-    """
-    result = {"success": False, "error": None}
-
-    if not sheets_configured():
+    if not folder:
         result["error"] = (
-            "الربط مع Google Sheets غير مُهيأ — راجع GSHEET_ID و "
-            "gcp_service_account في Secrets واعمل Reboot."
+            "لم يتم تحديد فولدر Google Drive. ثبّت Google Drive for desktop "
+            "ثم اختر فولدر My Drive من خانة مسار Backup."
         )
         return result
 
-    if not FilePath(DB_NAME).exists():
+    if not folder.exists() or not folder.is_dir():
+        result["error"] = f"فولدر Google Drive غير موجود أو غير متاح:\n{folder}"
+        return result
+
+    if not db_file.exists():
         result["error"] = "ملف قاعدة البيانات غير موجود."
         return result
 
-    try:
-        conn = get_connection()
-        customers_df = pd.read_sql_query("SELECT * FROM customers", conn)
-        orders_df = pd.read_sql_query("SELECT * FROM orders", conn)
-        notes_df = pd.read_sql_query("SELECT * FROM daily_notes", conn)
-        conn.close()
-
-        spreadsheet = get_spreadsheet()
-
-        _write_df_to_sheet(spreadsheet, "customers", customers_df)
-        _write_df_to_sheet(spreadsheet, "orders", orders_df)
-        _write_df_to_sheet(spreadsheet, "daily_notes", notes_df)
-
-        result["success"] = True
-
-    except Exception as exc:
-        result["error"] = str(exc)
-
-    return result
-
-
-def sheets_download_db():
-    """
-    Downloads the data from the Google Sheet and rebuilds
-    the local SQLite database from it.
-    """
-    result = {"success": False, "error": None}
-
-    if not sheets_configured():
-        result["error"] = (
-            "الربط مع Google Sheets غير مُهيأ — راجع Secrets واعمل Reboot."
-        )
+    if not _verify_sqlite(db_file):
+        result["error"] = "قاعدة البيانات الحالية غير سليمة، وتم إلغاء الـBackup لحماية النسخ القديمة."
         return result
 
+    temp_path = None
     try:
-        spreadsheet = get_spreadsheet()
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S_%f")
+        backup_name = f"{BACKUP_PREFIX}{timestamp}.db"
+        final_path = folder / backup_name
+        temp_path = folder / f".{backup_name}.tmp"
 
-        customers_df = _read_sheet_to_df(spreadsheet, "customers")
-        orders_df = _read_sheet_to_df(spreadsheet, "orders")
-        notes_df = _read_sheet_to_df(spreadsheet, "daily_notes")
+        shutil.copy2(str(db_file), str(temp_path))
 
-        if customers_df.empty and orders_df.empty and notes_df.empty:
-            result["error"] = "مفيش داتا على Google Sheets لسه."
-            return result
+        if temp_path.stat().st_size != db_file.stat().st_size:
+            raise IOError("حجم نسخة الـBackup لا يطابق قاعدة البيانات الأصلية.")
 
-        customers_df = _coerce_numeric(customers_df, int_cols=["customer_id"])
-        orders_df = _coerce_numeric(
-            orders_df,
-            int_cols=["order_id", "customer_id"],
-            float_cols=["total_cost", "deposit"],
-        )
-        notes_df = _coerce_numeric(notes_df, int_cols=["note_id"])
+        if not _verify_sqlite(temp_path):
+            raise IOError("تم نسخ الملف لكن فشل فحص سلامة SQLite.")
 
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("DROP TABLE IF EXISTS customers")
-        cursor.execute("DROP TABLE IF EXISTS orders")
-        cursor.execute("DROP TABLE IF EXISTS daily_notes")
-        conn.commit()
-        conn.close()
+        os.replace(str(temp_path), str(final_path))
 
-        init_db()
+        if not final_path.exists() or final_path.stat().st_size != db_file.stat().st_size:
+            raise IOError("فشل التحقق من النسخة النهائية داخل Google Drive.")
 
-        conn = get_connection()
-
-        if not customers_df.empty:
-            customers_df.to_sql(
-                "customers", conn, if_exists="append", index=False
-            )
-
-        if not orders_df.empty:
-            orders_df.to_sql(
-                "orders", conn, if_exists="append", index=False
-            )
-
-        if not notes_df.empty:
-            notes_df.to_sql(
-                "daily_notes", conn, if_exists="append", index=False
-            )
-
-        conn.commit()
-        conn.close()
+        # Keep newest copies. If cleanup fails, the successful new backup remains.
+        backups = drive_list_backups()
+        for old_file in backups[BACKUP_RETENTION:]:
+            try:
+                FilePath(old_file["id"]).unlink(missing_ok=True)
+            except Exception:
+                pass
 
         result["success"] = True
+        result["file_name"] = backup_name
+        return result
 
     except Exception as exc:
         result["error"] = str(exc)
+        return result
+    finally:
+        if temp_path:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
 
-    return result
 
-
-def sheets_remote_info():
-    """Returns info about the remote backup, or None."""
-    if not sheets_configured():
-        return None
+def drive_download_backup(file_id, destination=DB_NAME):
+    """Restore a selected verified backup into the local database."""
+    result = {"success": False, "error": None}
+    temp_path = None
 
     try:
-        spreadsheet = get_spreadsheet()
+        source = FilePath(file_id)
+        if not source.exists() or not source.is_file():
+            raise FileNotFoundError("نسخة الـBackup غير موجودة في Google Drive.")
 
-        found = False
-        try:
-            ws = spreadsheet.worksheet("orders")
-            found = len(ws.get_all_values()) > 1
-        except Exception:
-            found = False
+        if not _verify_sqlite(source):
+            raise IOError("نسخة الـBackup تالفة أو ليست قاعدة SQLite سليمة.")
 
-        return {"found": found, "url": spreadsheet.url}
+        fd, temp_name = tempfile.mkstemp(prefix="zero_restore_", suffix=".db")
+        os.close(fd)
+        temp_path = FilePath(temp_name)
 
-    except Exception:
-        return None
+        shutil.copy2(str(source), str(temp_path))
+        if not _verify_sqlite(temp_path):
+            raise IOError("فشل فحص النسخة أثناء الاسترجاع.")
+
+        os.replace(str(temp_path), str(FilePath(destination)))
+        temp_path = None
+
+        if not _verify_sqlite(FilePath(destination)):
+            raise IOError("تم الاسترجاع لكن فشل الفحص النهائي لقاعدة البيانات.")
+
+        result["success"] = True
+        return result
+
+    except Exception as exc:
+        result["error"] = str(exc)
+        return result
+    finally:
+        if temp_path:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+
+def drive_latest_backup():
+    backups = drive_list_backups()
+    return backups[0] if backups else None
+
+
+def drive_remote_info():
+    folder = get_drive_folder()
+    backups = drive_list_backups()
+    return {
+        "configured": bool(folder),
+        "folder": str(folder) if folder else "",
+        "found": bool(backups),
+        "count": len(backups),
+        "latest": backups[0] if backups else None,
+    }
 
 
 def backup_after_save():
-    """
-    Compatibility function used by the rest of the application.
-    Every successful save automatically syncs to Google Sheets.
-    """
-    return sheets_upload_db()
+    return drive_upload_backup()
 
 
-def restore_from_cloud():
-    return sheets_download_db()
+def restore_from_cloud(file_id=None):
+    if file_id:
+        return drive_download_backup(file_id)
 
+    latest = drive_latest_backup()
+    if not latest:
+        return {"success": False, "error": "مفيش Backup موجود على Google Drive."}
+
+    return drive_download_backup(latest["id"])
 
 # =========================================================
 # FIRST RUN:
-# If there is no local database but a Sheets copy exists -> restore it
+# If there is no local database but a Drive backup exists -> restore it
 # =========================================================
 if not FilePath(DB_NAME).exists():
-    info = sheets_remote_info()
-    if info and info.get("found"):
-        sheets_download_db()
+    latest_backup = drive_latest_backup()
+    if latest_backup:
+        drive_download_backup(latest_backup["id"])
 
 init_db()
 
@@ -971,7 +1057,7 @@ with st.sidebar:
         "📋  عرض واستعلام الطلبات",
         "⚙️  تحديث حالة طلب",
         "📝  المفكرة اليومية",
-        "☁️  النسخ الاحتياطي (Google Sheets)",
+        "☁️  النسخ الاحتياطي (Google Drive)",
     ]
 
     choice = st.selectbox(
@@ -1574,95 +1660,53 @@ elif choice == "📝  المفكرة اليومية":
                 st.write(row["note_text"])
 
 # =========================================================
-# 5. CLOUD SYNC (Google Sheets)
+# 5. CLOUD BACKUP (Google Drive)
 # =========================================================
-elif choice == "☁️  النسخ الاحتياطي (Google Sheets)":
+elif choice == "☁️  النسخ الاحتياطي (Google Drive)":
 
     st.markdown(
         """
         <div class="panel">
-            <div class="panel-title">☁️ حماية البيانات — Google Sheets</div>
+            <div class="panel-title">☁️ حماية البيانات — Google Drive</div>
             <div class="panel-sub">
-                قاعدة البيانات بتتحفظ على السيرفر، وبعد كل حفظ بيتم رفع نسخة
-                تلقائياً لملف Google Sheets عشان الداتا متضيعش أبداً —
-                ولو السيرفر اتمسح، التطبيق بيسترجعها لوحده.
+                النسخ الاحتياطي هنا يتم من خلال فولدر Google Drive الموجود على نفس الكمبيوتر.
+                لا يوجد Google Cloud أو Service Account أو API أو اشتراك مدفوع.
             </div>
         </div>
         """,
         unsafe_allow_html=True
     )
 
-    # -----------------------------------------------------
-    # NOT CONFIGURED -> show setup steps
-    # -----------------------------------------------------
+    # The user only needs Google Drive for desktop installed and signed in.
+    current_folder = get_drive_folder()
+    current_folder_text = str(current_folder) if current_folder else ""
 
-    if not sheets_configured():
+    st.markdown("### 📁 مكان Backup")
+    drive_path = st.text_input(
+        "مسار فولدر Google Drive الذي تريد حفظ النسخ بداخله",
+        value=current_folder_text,
+        placeholder=r"مثال: C:\Users\اسمك\Google Drive\My Drive\ZERO BACKUPS",
+        help="يفضل عمل فولدر اسمه ZERO BACKUPS داخل My Drive واستخدام مساره هنا."
+    )
 
-        st.error("❌ الربط مع Google Sheets غير مُهيأ.")
+    if drive_path.strip() != current_folder_text:
+        st.session_state["google_drive_backup_folder"] = drive_path.strip()
+        current_folder = get_drive_folder()
 
-        st.markdown(
-            """
-            <div class="panel">
-                <div class="panel-title">⚙️ خطوات التفعيل (3 دقايق تقريباً)</div>
-            </div>
-            """,
-            unsafe_allow_html=True
+    if not drive_path.strip():
+        st.warning(
+            "⚠️ لم يتم تحديد فولدر Google Drive. ثبّت Google Drive for desktop "
+            "وسجّل دخولك بحساب Google، ثم اختر مسار My Drive هنا."
         )
-
-        st.markdown(
-            """
-1) على console.cloud.google.com اعمل مشروع (Project) جديد أو استخدم
-   واحد موجود، وفعّل الخدمتين دول من قسم APIs & Services:
-   - Google Sheets API
-   - Google Drive API
-
-2) اعمل Service Account:
-   IAM & Admin ← Service Accounts ← Create Service Account.
-   اديله أي اسم (مثلاً zero-app) ← Create and Continue ← Done.
-   بعدين افتحه ← تبويب Keys ← Add Key ← Create new key ← اختار JSON.
-   هيتنزلك ملف JSON فيه بيانات الاتصال - خليه محفوظ عندك.
-
-3) على sheets.google.com اعمل Google Sheet فاضي جديد
-   (مثلاً اسمه: ZERO DATA).
-   من رابط الشيت انسخ الـ Spreadsheet ID، وهو الجزء ده من الرابط:
-   https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/edit
-
-4) شارك (Share) الشيت مع إيميل الـ Service Account
-   (شكله: xxxx@xxxx.iam.gserviceaccount.com، تلاقيه جوه ملف الـ JSON
-   في حقل client_email) وادّيله صلاحية Editor.
-
-5) في Streamlit Cloud ← تطبيقك ← Settings ← Secrets ضيف:
-
-GSHEET_ID = "SPREADSHEET_ID_بتاعك"
-
-[gcp_service_account]
-type = "service_account"
-project_id = "..."
-private_key_id = "..."
-private_key = "-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n"
-client_email = "...@....iam.gserviceaccount.com"
-client_id = "..."
-auth_uri = "https://accounts.google.com/o/oauth2/auth"
-token_uri = "https://oauth2.googleapis.com/token"
-auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
-client_x509_cert_url = "..."
-
-> ⚠️ انسخ كل القيم دي حرفياً من ملف الـ JSON اللي نزلته.
-
-6) في requirements.txt ضيف السطرين دول:
-gspread
-google-auth
-
-7) اعمل Reboot للتطبيق. خلاص كده ✅
-"""
+    elif not current_folder or not current_folder.exists() or not current_folder.is_dir():
+        st.error(
+            "❌ المسار غير موجود حالياً. تأكد أن Google Drive for desktop يعمل "
+            "وأن المسار الذي أدخلته هو فولدر موجود فعلاً."
         )
-
     else:
-
-        st.success("✅ Google Sheets متصل بنجاح.")
+        st.success(f"✅ فولدر Google Drive جاهز للنسخ:\n`{current_folder}`")
 
         db_file = FilePath(DB_NAME)
-
         if db_file.exists():
             db_size = db_file.stat().st_size / 1024
             st.info(
@@ -1670,64 +1714,104 @@ google-auth
                 f"الحجم: {db_size:.1f} KB"
             )
 
-        remote = sheets_remote_info()
-
-        if remote and remote.get("found"):
-            st.success("☁️ توجد نسخة من الداتا على Google Sheets.")
-            if remote.get("url"):
-                st.markdown(f"[فتح الشيت]({remote['url']})")
+        remote = drive_remote_info()
+        if remote.get("found"):
+            latest = remote.get("latest") or {}
+            st.success(
+                f"☁️ موجود {remote.get('count', 0)} نسخة Backup محفوظة."
+            )
+            st.info(f"🕒 أحدث نسخة: `{latest.get('name', 'غير معروف')}`")
         else:
-            st.info("📭 لسه مفيش نسخة على Google Sheets — هتتعمل مع أول حفظ.")
-
-        # ---------------------------------------------
-        # MANUAL UPLOAD
-        # ---------------------------------------------
-
-        if st.button(
-            "☁️ رفع نسخة من الداتا لـ Google Sheets الآن",
-            use_container_width=True
-        ):
-            with st.spinner("⏳ جاري الرفع لـ Google Sheets..."):
-                result = sheets_upload_db()
-            if result["success"]:
-                st.success("✅ تم رفع نسخة الداتا لـ Google Sheets بنجاح.")
-            else:
-                st.error("❌ فشل الرفع:\n\n" + str(result["error"]))
+            st.info("📭 لا توجد نسخة Backup حتى الآن.")
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # ---------------------------------------------
-        # RESTORE
-        # ---------------------------------------------
+        if st.button(
+            "☁️ Backup to Drive الآن",
+            use_container_width=True
+        ):
+            with st.spinner("⏳ جاري إنشاء نسخة والتحقق منها..."):
+                result = drive_upload_backup()
+
+            if result["success"]:
+                st.success(
+                    "✅ تم إنشاء الـBackup بنجاح والتحقق من سلامته:\n\n"
+                    + str(result["file_name"])
+                )
+                st.info(
+                    "Google Drive for desktop سيقوم بمزامنة الملف مع حسابك."
+                )
+                st.rerun()
+            else:
+                st.error("❌ لم يتم اعتبار الـBackup ناجحاً:\n\n" + str(result["error"]))
+
+        st.markdown("<br>", unsafe_allow_html=True)
 
         st.markdown(
             """
             <div class="panel">
-                <div class="panel-title">🔄 استرجاع الداتا من Google Sheets</div>
+                <div class="panel-title">🔄 استرجاع نسخة</div>
                 <div class="panel-sub">
-                    لو السيرفر اتمسح أو حصلت مشكلة، استرجع آخر نسخة.
+                    كل نسخة يتم فحصها قبل الاسترجاع، ويتم عمل Backup للداتا الحالية أولاً.
                 </div>
             </div>
             """,
             unsafe_allow_html=True
         )
 
-        st.warning(
-            "⚠️ الاسترجاع هايستبدل قاعدة البيانات الحالية "
-            "بآخر نسخة على Google Sheets."
-        )
+        backups = drive_list_backups()
 
-        if st.button(
-            "🔄 استرجاع الداتا من Google Sheets",
-            use_container_width=True
-        ):
-            with st.spinner("⏳ جاري التنزيل من Google Sheets..."):
-                result = sheets_download_db()
-            if result["success"]:
-                st.success("✅ تم استرجاع الداتا بنجاح.")
-                st.rerun()
-            else:
-                st.error("❌ فشل الاسترجاع:\n\n" + str(result["error"]))
+        if not backups:
+            st.info("📭 مفيش نسخ Backup متاحة للاسترجاع حالياً.")
+        else:
+            backup_options = {}
+            for backup in backups:
+                name = backup.get("name", "Backup")
+                created = backup.get("createdTime", "")
+                size = backup.get("size", "0")
+                try:
+                    size_kb = float(size) / 1024
+                    size_text = f"{size_kb:.1f} KB"
+                except Exception:
+                    size_text = "الحجم غير معروف"
+
+                label = f"{name} — {size_text}"
+                if created:
+                    label += f" — {created.replace('T', ' ')[:19]}"
+                backup_options[label] = backup["id"]
+
+            selected_backup_label = st.selectbox(
+                "📌 اختر النسخة",
+                list(backup_options.keys())
+            )
+
+            st.warning(
+                "⚠️ الاسترجاع سيستبدل قاعدة البيانات الحالية. "
+                "سيتم أولاً عمل Backup تلقائي للداتا الحالية، وإذا فشل هذا الـBackup "
+                "سيتم إلغاء الاسترجاع."
+            )
+
+            if st.button(
+                "🔄 استرجاع النسخة المختارة",
+                use_container_width=True
+            ):
+                with st.spinner("⏳ جاري عمل نسخة أمان ثم الاسترجاع..."):
+                    safety_backup = drive_upload_backup()
+
+                    if not safety_backup["success"]:
+                        st.error(
+                            "❌ لم يتم الاسترجاع لأن نسخة الأمان لم تنجح:\n\n"
+                            + str(safety_backup["error"])
+                        )
+                    else:
+                        selected_id = backup_options[selected_backup_label]
+                        result = drive_download_backup(selected_id)
+
+                        if result["success"]:
+                            st.success("✅ تم استرجاع النسخة بنجاح.")
+                            st.rerun()
+                        else:
+                            st.error("❌ فشل الاسترجاع:\n\n" + str(result["error"]))
 
 # =========================================================
 # FOOTER
