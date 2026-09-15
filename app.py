@@ -117,7 +117,15 @@ def _drive_roots():
     return result
 
 def get_drive_backup_dir():
-    """Find My Drive locally and create ZERO BACKUPS automatically."""
+    """Use the exact mounted Google Drive path first, then fall back to detection."""
+    exact = FilePath(r"G:\My Drive\ZERO BACKUPS")
+    try:
+        if FilePath(r"G:\My Drive").exists():
+            exact.mkdir(parents=True, exist_ok=True)
+            return exact
+    except Exception:
+        pass
+
     for root in _drive_roots():
         if root.exists() and root.is_dir():
             folder = root / DRIVE_BACKUP_FOLDER_NAME
@@ -276,9 +284,24 @@ def detect_google_drive_folder():
     return ""
 
 
-DEFAULT_DRIVE_FOLDER = get_secret("GOOGLE_DRIVE_BACKUP_FOLDER").strip()
+# The user's Google Drive for desktop is mounted as G:\My Drive.
+# Use the exact path first, and create ZERO BACKUPS automatically.
+EXACT_MY_DRIVE = FilePath(r"G:\My Drive")
+EXACT_BACKUP_FOLDER = EXACT_MY_DRIVE / "ZERO BACKUPS"
+
+if EXACT_MY_DRIVE.exists() and EXACT_MY_DRIVE.is_dir():
+    try:
+        EXACT_BACKUP_FOLDER.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+
+DEFAULT_DRIVE_FOLDER = str(EXACT_BACKUP_FOLDER) if EXACT_BACKUP_FOLDER.exists() else ""
 if not DEFAULT_DRIVE_FOLDER:
-    DEFAULT_DRIVE_FOLDER = detect_google_drive_folder()
+    DEFAULT_DRIVE_FOLDER = get_secret("GOOGLE_DRIVE_BACKUP_FOLDER").strip()
+if not DEFAULT_DRIVE_FOLDER:
+    detected = detect_google_drive_folder()
+    if detected:
+        DEFAULT_DRIVE_FOLDER = str(FilePath(detected) / DRIVE_BACKUP_FOLDER_NAME)
 
 
 def _clean_drive_path(value):
@@ -1698,23 +1721,25 @@ elif choice == "☁️  النسخ الاحتياطي (Google Drive)":
     current_folder_text = str(current_folder) if current_folder else ""
 
     st.markdown("### 📁 مكان Backup")
-    drive_path = st.text_input(
-        "مسار فولدر Google Drive الذي تريد حفظ النسخ بداخله",
-        value=current_folder_text,
-        placeholder=r"مثال: C:\Users\اسمك\Google Drive\My Drive\ZERO BACKUPS",
-        help="يفضل عمل فولدر اسمه ZERO BACKUPS داخل My Drive واستخدام مساره هنا."
-    )
+    st.info("التطبيق مضبوط تلقائياً على Google Drive الظاهر عندك: `G:\\My Drive\\ZERO BACKUPS`")
 
-    cleaned_drive_path = _clean_drive_path(drive_path)
+    # Create the folder automatically on the machine where Streamlit is running.
+    exact_folder = FilePath(r"G:\My Drive\ZERO BACKUPS")
+    try:
+        if FilePath(r"G:\My Drive").exists():
+            exact_folder.mkdir(parents=True, exist_ok=True)
+            st.session_state["google_drive_backup_folder"] = str(exact_folder)
+            current_folder = exact_folder
+    except Exception:
+        pass
 
-    if cleaned_drive_path != current_folder_text:
-        st.session_state["google_drive_backup_folder"] = cleaned_drive_path
-        current_folder = get_drive_folder()
-
-    if not drive_path.strip():
+    if not FilePath(r"G:\My Drive").exists():
+        st.error(
+            "❌ التطبيق نفسه لا يرى القرص G:. "
+            "وده معناه أن Streamlit شغال على جهاز/سيرفر مختلف عن جهازك الذي فيه Google Drive."
+        )
         st.warning(
-            "⚠️ لم يتم تحديد فولدر Google Drive. ثبّت Google Drive for desktop "
-            "وسجّل دخولك بحساب Google، ثم اختر مسار My Drive هنا."
+            "لو أنت فاتح البرنامج من Streamlit Cloud أو استضافة، مش هيقدر يوصل إلى G: الخاص بجهازك."
         )
     elif not current_folder or not current_folder.exists() or not current_folder.is_dir():
         st.error(
