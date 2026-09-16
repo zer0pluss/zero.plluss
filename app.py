@@ -126,7 +126,7 @@ def drive_backup_db():
         raw = db_file.read_bytes()
         compressed = gzip.compress(raw, compresslevel=9)
         encoded = base64.b64encode(compressed).decode("ascii")
-        filename = f"ZERO_DB_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db.gz"
+        filename = "ZERO_DATABASE_BACKUP.db.gz"
         response = requests.post(
             DRIVE_BACKUP_URL,
             data={"action":"backup","token":DRIVE_BACKUP_TOKEN,
