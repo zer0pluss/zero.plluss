@@ -84,165 +84,13 @@ def init_db():
 
 
 # =========================================================
-# BACKUP TO GOOGLE DRIVE DESKTOP
-# ---------------------------------------------------------
-# No Google Cloud, Service Account, OAuth, API keys, or paid
-# service is needed here. The app copies verified SQLite
-# snapshots into the normal Google Drive for desktop folder.
-# Google Drive for desktop then syncs those files to your
-# personal Google Drive account.
+# CLOUD BACKUP (Google Drive via Google Apps Script)
 # =========================================================
+import gzip
 import shutil
-import tempfile
+import requests
 
-
-# ===== Robust Google Drive Desktop Backup =====
-DRIVE_BACKUP_FOLDER_NAME = "ZERO BACKUPS"
-DRIVE_MAX_BACKUPS = 30
-
-def _drive_roots():
-    home = Path.home()
-    roots = [
-        home / "Google Drive" / "My Drive",
-        home / "My Drive",
-    ]
-    for letter in "DEFGHIJKLMNOPQRSTUVWXYZ":
-        roots += [Path(f"{letter}:/My Drive")]
-    seen, result = set(), []
-    for p in roots:
-        key = str(p).lower()
-        if key not in seen and p.exists():
-            seen.add(key)
-            result.append(p)
-    return result
-
-def get_drive_backup_dir():
-    """Use the exact mounted Google Drive path first, then fall back to detection."""
-    exact = FilePath(r"G:\My Drive\ZERO BACKUPS")
-    try:
-        if FilePath(r"G:\My Drive").exists():
-            exact.mkdir(parents=True, exist_ok=True)
-            return exact
-    except Exception:
-        pass
-
-    for root in _drive_roots():
-        if root.exists() and root.is_dir():
-            folder = root / DRIVE_BACKUP_FOLDER_NAME
-            folder.mkdir(parents=True, exist_ok=True)
-            return folder
-    return None
-
-def _verify_sqlite(path):
-    try:
-        with sqlite3.connect(str(path), timeout=10) as conn:
-            result = conn.execute("PRAGMA integrity_check").fetchone()
-        return bool(result and str(result[0]).lower() == "ok")
-    except Exception:
-        return False
-
-def backup_database_to_drive(db_path="print_shop.db"):
-    db = Path(db_path)
-    if not db.exists():
-        return False, "قاعدة البيانات المحلية غير موجودة."
-
-    if not _verify_sqlite(db):
-        return False, "قاعدة البيانات المحلية لم تجتز فحص SQLite."
-
-    folder = get_drive_backup_dir()
-    if folder is None:
-        return False, "Google Drive for desktop غير موجود أو My Drive غير ظاهر على الجهاز."
-
-    target = folder / f"print_shop_backup_{datetime.now():%Y-%m-%d_%H-%M-%S}.db"
-    try:
-        shutil.copy2(db, target)
-
-        # Do not report success until the copied file is verified.
-        if not target.exists() or target.stat().st_size != db.stat().st_size:
-            target.unlink(missing_ok=True)
-            return False, "فشل التحقق من نسخة Drive."
-
-        if not _verify_sqlite(target):
-            target.unlink(missing_ok=True)
-            return False, "نسخة Drive موجودة لكن فحص SQLite فشل."
-
-        backups = sorted(folder.glob("print_shop_backup_*.db"),
-                         key=lambda p: p.stat().st_mtime, reverse=True)
-        for old in backups[DRIVE_MAX_BACKUPS:]:
-            try:
-                old.unlink()
-            except Exception:
-                pass
-
-        return True, f"تم الـBackup بنجاح: {target.name}"
-    except Exception as e:
-        return False, f"فشل الـBackup: {e}"
-
-def list_drive_backups():
-    folder = get_drive_backup_dir()
-    if folder is None:
-        return []
-    return sorted(folder.glob("print_shop_backup_*.db"),
-                  key=lambda p: p.stat().st_mtime, reverse=True)
-
-def restore_database_from_drive(backup_path, db_path="print_shop.db"):
-    backup = Path(backup_path)
-    db = Path(db_path)
-
-    if not backup.exists() or not _verify_sqlite(backup):
-        return False, "نسخة الـBackup غير موجودة أو غير سليمة."
-
-    try:
-        if db.exists():
-            safety = db.with_name(
-                f"{db.stem}_before_restore_{datetime.now():%Y-%m-%d_%H-%M-%S}{db.suffix}"
-            )
-            shutil.copy2(db, safety)
-
-        temp = db.with_name(db.stem + "_restore_tmp.db")
-        shutil.copy2(backup, temp)
-        if not _verify_sqlite(temp):
-            temp.unlink(missing_ok=True)
-            return False, "فشل فحص النسخة قبل الاستعادة."
-
-        os.replace(temp, db)
-        return True, f"تمت الاستعادة بنجاح من: {backup.name}"
-    except Exception as e:
-        return False, f"فشل الـRestore: {e}"
-
-def render_drive_backup_ui():
-    st.subheader("☁️ Backup to Google Drive")
-    st.caption("يعمل من خلال Google Drive for desktop — بدون Google Cloud أو Service Account.")
-
-    folder = get_drive_backup_dir()
-    if folder is None:
-        st.error("Google Drive غير جاهز على هذا الكمبيوتر.")
-        st.info("افتح Google Drive for desktop وسجّل الدخول، ثم تأكد أن My Drive ظاهر في File Explorer.")
-        return
-
-    st.success(f"Google Drive جاهز ✅\n`{folder}`")
-
-    if st.button("☁️ Backup to Drive", use_container_width=True):
-        ok, msg = backup_database_to_drive("print_shop.db")
-        (st.success if ok else st.error)(msg)
-
-    backups = list_drive_backups()
-    if backups:
-        labels = [f"{p.name} — {p.stat().st_size:,} bytes" for p in backups]
-        selected_label = st.selectbox("اختر نسخة للاستعادة", labels)
-        selected = backups[labels.index(selected_label)]
-        if st.button("♻️ Restore selected backup", use_container_width=True):
-            ok, msg = restore_database_from_drive(selected)
-            (st.success if ok else st.error)(msg)
-            if ok:
-                st.warning("أعد تشغيل التطبيق بعد الاستعادة.")
-    else:
-        st.info("لا توجد نسخ احتياطية حتى الآن.")
-
-
-BACKUP_PREFIX = "ZERO_backup_"
-BACKUP_RETENTION = 30
-
+DB_NAME = "print_shop.db"
 
 def get_secret(key):
     try:
@@ -253,264 +101,112 @@ def get_secret(key):
         pass
     return os.environ.get(key, "")
 
+DRIVE_BACKUP_URL = get_secret("DRIVE_BACKUP_URL").strip()
+DRIVE_BACKUP_TOKEN = get_secret("DRIVE_BACKUP_TOKEN").strip()
 
-def detect_google_drive_folder():
-    """Find common Google Drive for desktop locations on Windows."""
-    candidates = []
-    user_home = os.environ.get("USERPROFILE") or str(FilePath.home())
+def drive_backup_configured():
+    return bool(DRIVE_BACKUP_URL and DRIVE_BACKUP_TOKEN)
 
-    candidates.extend([
-        FilePath(user_home) / "Google Drive" / "My Drive",
-        FilePath(user_home) / "My Drive",
-        FilePath(user_home) / "Google Drive",
-    ])
-
-    for letter in "DEFGHIJKLMNOPQRSTUVWXYZ":
-        candidates.extend([
-            FilePath(f"{letter}:\\My Drive"),
-            FilePath(f"{letter}:\\Google Drive"),
-        ])
-
-    # Google Drive for desktop commonly appears as a mounted drive
-    # (for example G:\\My Drive). Prefer an actually existing My Drive.
-
-    for candidate in candidates:
-        try:
-            if candidate.exists() and candidate.is_dir():
-                return str(candidate)
-        except Exception:
-            pass
-
-    return ""
-
-
-# The user's Google Drive for desktop is mounted as G:\My Drive.
-# Use the exact path first, and create ZERO BACKUPS automatically.
-EXACT_MY_DRIVE = FilePath(r"G:\My Drive")
-EXACT_BACKUP_FOLDER = EXACT_MY_DRIVE / "ZERO BACKUPS"
-
-if EXACT_MY_DRIVE.exists() and EXACT_MY_DRIVE.is_dir():
+def _json_response(response):
     try:
-        EXACT_BACKUP_FOLDER.mkdir(parents=True, exist_ok=True)
+        return response.json()
     except Exception:
-        pass
+        return {"success": False, "error": response.text[:500]}
 
-DEFAULT_DRIVE_FOLDER = str(EXACT_BACKUP_FOLDER) if EXACT_BACKUP_FOLDER.exists() else ""
-if not DEFAULT_DRIVE_FOLDER:
-    DEFAULT_DRIVE_FOLDER = get_secret("GOOGLE_DRIVE_BACKUP_FOLDER").strip()
-if not DEFAULT_DRIVE_FOLDER:
-    detected = detect_google_drive_folder()
-    if detected:
-        DEFAULT_DRIVE_FOLDER = str(FilePath(detected) / DRIVE_BACKUP_FOLDER_NAME)
-
-
-def _clean_drive_path(value):
-    """Normalize a Windows Google Drive path pasted with or without quotes."""
-    if not value:
-        return ""
-    value = str(value).strip()
-    # Users often paste paths as "G:\\My Drive\\ZERO BACKUPS".
-    # The quotes are not part of the Windows path.
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
-        value = value[1:-1].strip()
-    value = value.replace("/", "\\")
-    return value
-
-def get_drive_folder():
-    folder = st.session_state.get("google_drive_backup_folder", DEFAULT_DRIVE_FOLDER)
-    folder = _clean_drive_path(folder)
-    return FilePath(folder).expanduser() if folder else None
-
-
-def drive_configured():
-    folder = get_drive_folder()
-    return bool(folder and folder.exists() and folder.is_dir())
-
-
-def drive_list_backups():
-    folder = get_drive_folder()
-    if not folder or not folder.exists():
-        return []
-
-    files = []
-    try:
-        for item in folder.iterdir():
-            if item.is_file() and item.name.startswith(BACKUP_PREFIX) and item.suffix.lower() == ".db":
-                stat = item.stat()
-                files.append({
-                    "id": str(item),
-                    "name": item.name,
-                    "size": str(stat.st_size),
-                    "createdTime": datetime.fromtimestamp(stat.st_ctime).isoformat(),
-                    "modifiedTime": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-                })
-    except Exception:
-        return []
-
-    return sorted(files, key=lambda x: x.get("createdTime", ""), reverse=True)
-
-
-def _verify_sqlite(path):
-    conn = None
-    try:
-        conn = sqlite3.connect(str(path), timeout=30)
-        result = conn.execute("PRAGMA integrity_check").fetchone()
-        return bool(result and result[0] == "ok")
-    except Exception:
-        return False
-    finally:
-        if conn:
-            conn.close()
-
-
-def drive_upload_backup():
-    """Create a verified snapshot in the local Drive-synced folder."""
-    result = {"success": False, "error": None, "file_name": None}
-    folder = get_drive_folder()
+def drive_backup_db():
+    result = {"success": False, "error": None}
+    if not drive_backup_configured():
+        result["error"] = "النسخ الاحتياطي غير مُهيأ."
+        return result
     db_file = FilePath(DB_NAME)
-
-    if not folder:
-        result["error"] = (
-            "لم يتم تحديد فولدر Google Drive. ثبّت Google Drive for desktop "
-            "ثم اختر فولدر My Drive من خانة مسار Backup."
-        )
-        return result
-
-    if not folder.exists() or not folder.is_dir():
-        result["error"] = f"فولدر Google Drive غير موجود أو غير متاح:\n{folder}"
-        return result
-
     if not db_file.exists():
         result["error"] = "ملف قاعدة البيانات غير موجود."
         return result
-
-    if not _verify_sqlite(db_file):
-        result["error"] = "قاعدة البيانات الحالية غير سليمة، وتم إلغاء الـBackup لحماية النسخ القديمة."
-        return result
-
-    temp_path = None
     try:
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S_%f")
-        backup_name = f"{BACKUP_PREFIX}{timestamp}.db"
-        final_path = folder / backup_name
-        temp_path = folder / f".{backup_name}.tmp"
-
-        shutil.copy2(str(db_file), str(temp_path))
-
-        if temp_path.stat().st_size != db_file.stat().st_size:
-            raise IOError("حجم نسخة الـBackup لا يطابق قاعدة البيانات الأصلية.")
-
-        if not _verify_sqlite(temp_path):
-            raise IOError("تم نسخ الملف لكن فشل فحص سلامة SQLite.")
-
-        os.replace(str(temp_path), str(final_path))
-
-        if not final_path.exists() or final_path.stat().st_size != db_file.stat().st_size:
-            raise IOError("فشل التحقق من النسخة النهائية داخل Google Drive.")
-
-        # Keep newest copies. If cleanup fails, the successful new backup remains.
-        backups = drive_list_backups()
-        for old_file in backups[BACKUP_RETENTION:]:
-            try:
-                FilePath(old_file["id"]).unlink(missing_ok=True)
-            except Exception:
-                pass
-
-        result["success"] = True
-        result["file_name"] = backup_name
-        return result
-
+        raw = db_file.read_bytes()
+        compressed = gzip.compress(raw, compresslevel=9)
+        encoded = base64.b64encode(compressed).decode("ascii")
+        filename = f"ZERO_DB_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db.gz"
+        response = requests.post(
+            DRIVE_BACKUP_URL,
+            data={"action":"backup","token":DRIVE_BACKUP_TOKEN,
+                  "filename":filename,"data":encoded},
+            timeout=90,
+        )
+        payload = _json_response(response)
+        if response.ok and payload.get("success"):
+            result["success"] = True
+            result["filename"] = filename
+        else:
+            result["error"] = payload.get("error") or f"HTTP {response.status_code}"
     except Exception as exc:
         result["error"] = str(exc)
-        return result
-    finally:
-        if temp_path:
-            try:
-                temp_path.unlink(missing_ok=True)
-            except Exception:
-                pass
+    return result
 
-
-def drive_download_backup(file_id, destination=DB_NAME):
-    """Restore a selected verified backup into the local database."""
+def drive_restore_latest():
     result = {"success": False, "error": None}
-    temp_path = None
-
-    try:
-        source = FilePath(file_id)
-        if not source.exists() or not source.is_file():
-            raise FileNotFoundError("نسخة الـBackup غير موجودة في Google Drive.")
-
-        if not _verify_sqlite(source):
-            raise IOError("نسخة الـBackup تالفة أو ليست قاعدة SQLite سليمة.")
-
-        fd, temp_name = tempfile.mkstemp(prefix="zero_restore_", suffix=".db")
-        os.close(fd)
-        temp_path = FilePath(temp_name)
-
-        shutil.copy2(str(source), str(temp_path))
-        if not _verify_sqlite(temp_path):
-            raise IOError("فشل فحص النسخة أثناء الاسترجاع.")
-
-        os.replace(str(temp_path), str(FilePath(destination)))
-        temp_path = None
-
-        if not _verify_sqlite(FilePath(destination)):
-            raise IOError("تم الاسترجاع لكن فشل الفحص النهائي لقاعدة البيانات.")
-
-        result["success"] = True
+    if not drive_backup_configured():
+        result["error"] = "النسخ الاحتياطي غير مُهيأ."
         return result
-
+    try:
+        response = requests.get(
+            DRIVE_BACKUP_URL,
+            params={"action":"download","token":DRIVE_BACKUP_TOKEN,"latest":"1"},
+            timeout=90,
+        )
+        payload = _json_response(response)
+        if not response.ok or not payload.get("success"):
+            result["error"] = payload.get("error") or f"HTTP {response.status_code}"
+            return result
+        raw = gzip.decompress(base64.b64decode(payload.get("data","")))
+        temp_path = FilePath(DB_NAME + ".restore_tmp")
+        temp_path.write_bytes(raw)
+        test_conn = sqlite3.connect(str(temp_path), timeout=30)
+        integrity = test_conn.execute("PRAGMA integrity_check").fetchone()[0]
+        test_conn.close()
+        if integrity != "ok":
+            temp_path.unlink(missing_ok=True)
+            result["error"] = "النسخة الاحتياطية تالفة أو ليست SQLite سليمة."
+            return result
+        db_file = FilePath(DB_NAME)
+        if db_file.exists():
+            shutil.copy2(
+                db_file,
+                f"print_shop_before_restore_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+            )
+        shutil.move(str(temp_path), DB_NAME)
+        result["success"] = True
+        result["filename"] = payload.get("filename","latest backup")
     except Exception as exc:
         result["error"] = str(exc)
-        return result
-    finally:
-        if temp_path:
-            try:
-                temp_path.unlink(missing_ok=True)
-            except Exception:
-                pass
+    return result
 
-
-def drive_latest_backup():
-    backups = drive_list_backups()
-    return backups[0] if backups else None
-
-
-def drive_remote_info():
-    folder = get_drive_folder()
-    backups = drive_list_backups()
-    return {
-        "configured": bool(folder),
-        "folder": str(folder) if folder else "",
-        "found": bool(backups),
-        "count": len(backups),
-        "latest": backups[0] if backups else None,
-    }
-
+def drive_backup_info():
+    if not drive_backup_configured():
+        return None
+    try:
+        response = requests.get(
+            DRIVE_BACKUP_URL,
+            params={"action":"status","token":DRIVE_BACKUP_TOKEN},
+            timeout=30,
+        )
+        payload = _json_response(response)
+        if response.ok and payload.get("success"):
+            return payload
+    except Exception:
+        pass
+    return None
 
 def backup_after_save():
-    return drive_upload_backup()
+    return drive_backup_db()
 
+def restore_from_cloud():
+    return drive_restore_latest()
 
-def restore_from_cloud(file_id=None):
-    if file_id:
-        return drive_download_backup(file_id)
-
-    latest = drive_latest_backup()
-    if not latest:
-        return {"success": False, "error": "مفيش Backup موجود على Google Drive."}
-
-    return drive_download_backup(latest["id"])
-
-# =========================================================
-# FIRST RUN:
-# If there is no local database but a Drive backup exists -> restore it
-# =========================================================
 if not FilePath(DB_NAME).exists():
-    latest_backup = drive_latest_backup()
-    if latest_backup:
-        drive_download_backup(latest_backup["id"])
+    info = drive_backup_info()
+    if info and info.get("found"):
+        drive_restore_latest()
 
 init_db()
 
@@ -1708,155 +1404,60 @@ elif choice == "☁️  النسخ الاحتياطي (Google Drive)":
         <div class="panel">
             <div class="panel-title">☁️ حماية البيانات — Google Drive</div>
             <div class="panel-sub">
-                النسخ الاحتياطي هنا يتم من خلال فولدر Google Drive الموجود على نفس الكمبيوتر.
-                لا يوجد Google Cloud أو Service Account أو API أو اشتراك مدفوع.
+                بعد كل حفظ، نسخة مضغوطة من قاعدة البيانات تُرفع تلقائياً إلى مجلد ZERO BACKUPS في Google Drive.
             </div>
         </div>
         """,
         unsafe_allow_html=True
     )
 
-    # The user only needs Google Drive for desktop installed and signed in.
-    current_folder = get_drive_folder()
-    current_folder_text = str(current_folder) if current_folder else ""
-
-    st.markdown("### 📁 مكان Backup")
-    st.info("التطبيق مضبوط تلقائياً على Google Drive الظاهر عندك: `G:\\My Drive\\ZERO BACKUPS`")
-
-    # Create the folder automatically on the machine where Streamlit is running.
-    exact_folder = FilePath(r"G:\My Drive\ZERO BACKUPS")
-    try:
-        if FilePath(r"G:\My Drive").exists():
-            exact_folder.mkdir(parents=True, exist_ok=True)
-            st.session_state["google_drive_backup_folder"] = str(exact_folder)
-            current_folder = exact_folder
-    except Exception:
-        pass
-
-    if not FilePath(r"G:\My Drive").exists():
-        st.error(
-            "❌ التطبيق نفسه لا يرى القرص G:. "
-            "وده معناه أن Streamlit شغال على جهاز/سيرفر مختلف عن جهازك الذي فيه Google Drive."
+    if not drive_backup_configured():
+        st.error("❌ النسخ الاحتياطي غير مُهيأ.")
+        st.markdown("### ⚙️ الإعداد لأول مرة")
+        st.markdown(
+            """
+            1) افتح Google Apps Script وأنشئ مشروعاً جديداً.
+            2) الصق كود google_drive_backup_apps_script.gs.
+            3) Deploy → New deployment → Web app.
+            4) Execute as: **Me** — Who has access: **Anyone**.
+            5) انسخ Web app URL.
+            6) ضعه في Streamlit Secrets مع السر الموجود في Apps Script.
+            """
         )
-        st.warning(
-            "لو أنت فاتح البرنامج من Streamlit Cloud أو استضافة، مش هيقدر يوصل إلى G: الخاص بجهازك."
-        )
-    elif not current_folder or not current_folder.exists() or not current_folder.is_dir():
-        st.error(
-            "❌ التطبيق لم يجد الفولدر بهذا المسار على نفس جهاز التشغيل:\n\n"
-            f"`{current_folder}`\n\n"
-            "لو المسار ظاهر عندك في File Explorer مثل G:\\My Drive\\ZERO BACKUPS، "
-            "فلا تكتب علامات اقتباس حوله."
-        )
+        st.info("لا تحتاج Google Cloud Project أو Service Account أو Drive API.")
     else:
-        st.success(f"✅ فولدر Google Drive جاهز للنسخ:\n`{current_folder}`")
+        st.success("✅ Google Drive Backup متصل.")
 
         db_file = FilePath(DB_NAME)
         if db_file.exists():
             db_size = db_file.stat().st_size / 1024
-            st.info(
-                f"📦 قاعدة البيانات الحالية: `{DB_NAME}` — "
-                f"الحجم: {db_size:.1f} KB"
-            )
+            st.info(f"📦 قاعدة البيانات الحالية: `{DB_NAME}` — الحجم: {db_size:.1f} KB")
 
-        remote = drive_remote_info()
-        if remote.get("found"):
-            latest = remote.get("latest") or {}
-            st.success(
-                f"☁️ موجود {remote.get('count', 0)} نسخة Backup محفوظة."
-            )
-            st.info(f"🕒 أحدث نسخة: `{latest.get('name', 'غير معروف')}`")
+        remote = drive_backup_info()
+        if remote and remote.get("found"):
+            st.success("☁️ آخر نسخة: " + str(remote.get("filename","غير معروف")))
         else:
-            st.info("📭 لا توجد نسخة Backup حتى الآن.")
+            st.info("📭 لا توجد نسخة احتياطية على Google Drive حتى الآن.")
+
+        if st.button("☁️ عمل Backup الآن", use_container_width=True):
+            with st.spinner("⏳ جاري رفع النسخة..."):
+                result = drive_backup_db()
+            if result["success"]:
+                st.success("✅ تم رفع النسخة بنجاح إلى Google Drive.")
+            else:
+                st.error("❌ فشل النسخ الاحتياطي:\n\n" + str(result["error"]))
 
         st.markdown("<br>", unsafe_allow_html=True)
+        st.warning("⚠️ الاسترجاع سيستبدل قاعدة البيانات الحالية بآخر Backup موجود على Google Drive.")
 
-        if st.button(
-            "☁️ Backup to Drive الآن",
-            use_container_width=True
-        ):
-            with st.spinner("⏳ جاري إنشاء نسخة والتحقق منها..."):
-                result = drive_upload_backup()
-
+        if st.button("🔄 استرجاع آخر Backup", use_container_width=True):
+            with st.spinner("⏳ جاري تنزيل وفحص النسخة..."):
+                result = drive_restore_latest()
             if result["success"]:
-                st.success(
-                    "✅ تم إنشاء الـBackup بنجاح والتحقق من سلامته:\n\n"
-                    + str(result["file_name"])
-                )
-                st.info(
-                    "Google Drive for desktop سيقوم بمزامنة الملف مع حسابك."
-                )
+                st.success("✅ تم الاسترجاع: " + str(result.get("filename","latest backup")))
                 st.rerun()
             else:
-                st.error("❌ لم يتم اعتبار الـBackup ناجحاً:\n\n" + str(result["error"]))
-
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        st.markdown(
-            """
-            <div class="panel">
-                <div class="panel-title">🔄 استرجاع نسخة</div>
-                <div class="panel-sub">
-                    كل نسخة يتم فحصها قبل الاسترجاع، ويتم عمل Backup للداتا الحالية أولاً.
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-        backups = drive_list_backups()
-
-        if not backups:
-            st.info("📭 مفيش نسخ Backup متاحة للاسترجاع حالياً.")
-        else:
-            backup_options = {}
-            for backup in backups:
-                name = backup.get("name", "Backup")
-                created = backup.get("createdTime", "")
-                size = backup.get("size", "0")
-                try:
-                    size_kb = float(size) / 1024
-                    size_text = f"{size_kb:.1f} KB"
-                except Exception:
-                    size_text = "الحجم غير معروف"
-
-                label = f"{name} — {size_text}"
-                if created:
-                    label += f" — {created.replace('T', ' ')[:19]}"
-                backup_options[label] = backup["id"]
-
-            selected_backup_label = st.selectbox(
-                "📌 اختر النسخة",
-                list(backup_options.keys())
-            )
-
-            st.warning(
-                "⚠️ الاسترجاع سيستبدل قاعدة البيانات الحالية. "
-                "سيتم أولاً عمل Backup تلقائي للداتا الحالية، وإذا فشل هذا الـBackup "
-                "سيتم إلغاء الاسترجاع."
-            )
-
-            if st.button(
-                "🔄 استرجاع النسخة المختارة",
-                use_container_width=True
-            ):
-                with st.spinner("⏳ جاري عمل نسخة أمان ثم الاسترجاع..."):
-                    safety_backup = drive_upload_backup()
-
-                    if not safety_backup["success"]:
-                        st.error(
-                            "❌ لم يتم الاسترجاع لأن نسخة الأمان لم تنجح:\n\n"
-                            + str(safety_backup["error"])
-                        )
-                    else:
-                        selected_id = backup_options[selected_backup_label]
-                        result = drive_download_backup(selected_id)
-
-                        if result["success"]:
-                            st.success("✅ تم استرجاع النسخة بنجاح.")
-                            st.rerun()
-                        else:
-                            st.error("❌ فشل الاسترجاع:\n\n" + str(result["error"]))
+                st.error("❌ فشل الاسترجاع:\n\n" + str(result["error"]))
 
 # =========================================================
 # FOOTER
