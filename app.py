@@ -319,7 +319,7 @@ def set_custom_design():
             background-repeat: no-repeat;
             background-position: 20% 30%;
             background-size: min(1000px, 65vw);
-            opacity: 0.077;
+            opacity: 0.05;
             filter: none;
             pointer-events: none;
             z-index: 0;
@@ -330,19 +330,22 @@ def set_custom_design():
         f"""
 <style>
 
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap');
+
 /* =========================================================
    CORE
    ========================================================= */
 
 html, body, [class*="css"] {{
     direction: rtl;
+    font-family: 'Cairo', sans-serif !important;
 }}
 
 .stApp {{
     background:
-        radial-gradient(circle at 15% 15%, rgba(226,27,43,.10), transparent 28%),
-        radial-gradient(circle at 85% 80%, rgba(55,75,110,.12), transparent 32%),
-        linear-gradient(135deg, #060a12 0%, #0a111d 48%, #060a12 100%);
+        radial-gradient(circle at 12% 8%, rgba(226,27,43,.09), transparent 30%),
+        radial-gradient(circle at 88% 85%, rgba(217,164,65,.06), transparent 34%),
+        linear-gradient(160deg, #05070c 0%, #090d16 45%, #05070c 100%);
     color: #eef2f7;
 }}
 
@@ -351,8 +354,8 @@ html, body, [class*="css"] {{
 .main .block-container {{
     position: relative;
     z-index: 1;
-    max-width: 1550px;
-    padding-top: 1.2rem;
+    max-width: 1500px;
+    padding-top: 1.4rem;
     padding-bottom: 2.5rem;
 }}
 
@@ -367,52 +370,12 @@ header {{
 
 
 /* =========================================================
-   ANIMATIONS
-   ========================================================= */
-
-@keyframes fadeUp {{
-    from {{
-        opacity: 0;
-        transform: translateY(18px);
-    }}
-    to {{
-        opacity: 1;
-        transform: translateY(0);
-    }}
-}}
-
-@keyframes pulseRed {{
-    0%, 100% {{
-        box-shadow: 0 0 0 0 rgba(226,27,43,.20);
-    }}
-    50% {{
-        box-shadow: 0 0 0 8px rgba(226,27,43,0);
-    }}
-}}
-
-.fade-up {{
-    animation: fadeUp .55s ease both;
-}}
-
-.fade-up-2 {{
-    animation: fadeUp .70s ease both;
-}}
-
-.fade-up-3 {{
-    animation: fadeUp .85s ease both;
-}}
-
-
-/* =========================================================
    SIDEBAR
    ========================================================= */
 
 section[data-testid="stSidebar"] {{
-    background:
-        linear-gradient(180deg, #070c15 0%, #0a101b 55%, #060a12 100%)
-        !important;
-    border-left: 1px solid rgba(226,27,43,.65);
-    box-shadow: -15px 0 45px rgba(0,0,0,.35);
+    background: linear-gradient(180deg, #05080e 0%, #080c15 55%, #05070c 100%) !important;
+    border-left: 1px solid rgba(226,27,43,.5);
     overflow: hidden !important;
 }}
 
@@ -426,45 +389,45 @@ section[data-testid="stSidebar"] * {{
 
 .brand-box {{
     text-align: center;
-    padding: 8px 4px 16px;
+    padding: 10px 4px 18px;
 }}
 
 .brand-logo {{
-    width: 120px;
-    height: 120px;
+    width: 108px;
+    height: 108px;
     object-fit: cover;
-    border-radius: 18px;
-    border: 1px solid rgba(255,255,255,.13);
-    box-shadow: 0 18px 45px rgba(0,0,0,.45);
-    animation: fadeUp .6s ease both;
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,.12);
+    box-shadow: 0 16px 40px rgba(0,0,0,.5);
 }}
 
 .brand-name {{
-    font-size: 21px;
+    font-size: 20px;
     font-weight: 800;
-    margin-top: 11px;
-    letter-spacing: .3px;
+    margin-top: 12px;
+    letter-spacing: .2px;
 }}
 
 .brand-caption {{
-    color: #7f8da3 !important;
+    color: #6c7a90 !important;
     font-size: 11px;
-    margin-top: 2px;
+    margin-top: 3px;
 }}
 
 .side-label {{
-    color: #69778b !important;
-    font-size: 10px;
-    margin: 13px 3px 7px;
-    letter-spacing: .4px;
+    color: #5c6a80 !important;
+    font-size: 11px;
+    font-weight: 600;
+    margin: 16px 3px 8px;
 }}
 
 .side-note {{
-    background: linear-gradient(145deg, rgba(20,30,48,.94), rgba(9,15,26,.94));
-    border: 1px solid rgba(148,163,184,.13);
-    border-radius: 14px;
-    padding: 13px;
-    margin-top: 12px;
+    background: linear-gradient(160deg, rgba(18,27,44,.9), rgba(8,13,23,.9));
+    border: 1px solid rgba(148,163,184,.12);
+    border-right: 2px solid #d9a441;
+    border-radius: 12px;
+    padding: 14px;
+    margin-top: 14px;
 }}
 
 .side-note-title {{
@@ -475,33 +438,32 @@ section[data-testid="stSidebar"] * {{
 
 .side-note-date {{
     font-size: 10px;
-    color: #7f8da3 !important;
+    color: #6c7a90 !important;
     margin-top: 3px;
 }}
 
 .side-note-text {{
-    margin-top: 8px;
-    font-size: 11px;
-    line-height: 1.8;
+    margin-top: 9px;
+    font-size: 11.5px;
+    line-height: 1.85;
     color: #b9c3d1 !important;
     white-space: pre-wrap;
 }}
 
 
 /* =========================================================
-   HEADER
+   HERO
    ========================================================= */
 
 .hero {{
-    background:
-        linear-gradient(110deg, rgba(18,28,45,.92), rgba(8,14,25,.82));
-    border: 1px solid rgba(148,163,184,.14);
-    border-radius: 20px;
-    padding: 20px 24px;
-    margin-bottom: 18px;
+    background: linear-gradient(115deg, rgba(19,29,47,.92), rgba(7,11,20,.85));
+    border: 1px solid rgba(148,163,184,.13);
+    border-radius: 18px;
+    padding: 26px 28px;
+    margin-bottom: 20px;
     position: relative;
     overflow: hidden;
-    animation: fadeUp .45s ease both;
+    animation: heroIn .6s cubic-bezier(.2,.8,.2,1) both;
 }}
 
 .hero::after {{
@@ -509,24 +471,29 @@ section[data-testid="stSidebar"] * {{
     position: absolute;
     top: 0;
     right: 0;
-    width: 4px;
+    width: 5px;
     height: 100%;
-    background: linear-gradient(#ff2639, #a90e1e);
-    animation: pulseRed 2.2s infinite;
+    background: linear-gradient(#ff2639, #7a0d18);
+}}
+
+@keyframes heroIn {{
+    from {{ opacity: 0; transform: translateY(-10px); }}
+    to   {{ opacity: 1; transform: translateY(0); }}
 }}
 
 .hero-title {{
-    font-size: 28px;
+    font-size: 27px;
     font-weight: 800;
     color: #ffffff;
-    line-height: 1.35;
+    line-height: 1.4;
     word-break: break-word;
 }}
 
 .hero-sub {{
-    color: #8492a6;
+    color: #7a889d;
     font-size: 12px;
-    margin-top: 3px;
+    margin-top: 4px;
+    font-weight: 600;
 }}
 
 
@@ -535,22 +502,20 @@ section[data-testid="stSidebar"] * {{
    ========================================================= */
 
 .stat-card {{
-    background:
-        linear-gradient(145deg, rgba(20,31,50,.94), rgba(9,15,26,.92));
-    border: 1px solid rgba(148,163,184,.12);
-    border-radius: 17px;
-    padding: 18px 19px;
-    min-height: 118px;
+    background: linear-gradient(160deg, rgba(19,29,47,.95), rgba(7,11,20,.92));
+    border: 1px solid rgba(148,163,184,.11);
+    border-radius: 16px;
+    padding: 19px 20px;
+    min-height: 116px;
     position: relative;
     overflow: hidden;
     transition: transform .25s ease, border-color .25s ease, box-shadow .25s ease;
-    animation: fadeUp .6s ease both;
 }}
 
 .stat-card:hover {{
-    transform: translateY(-5px);
-    border-color: rgba(226,27,43,.42);
-    box-shadow: 0 16px 35px rgba(0,0,0,.28);
+    transform: translateY(-4px);
+    border-color: rgba(226,27,43,.4);
+    box-shadow: 0 16px 34px rgba(0,0,0,.32);
 }}
 
 .stat-card::before {{
@@ -564,49 +529,42 @@ section[data-testid="stSidebar"] * {{
 }}
 
 .stat-icon {{
-    font-size: 22px;
+    font-size: 21px;
+    opacity: .95;
 }}
 
 .stat-title {{
-    color: #78869a;
-    font-size: 11px;
-    margin-top: 5px;
+    color: #71809a;
+    font-size: 11.5px;
+    font-weight: 600;
+    margin-top: 6px;
 }}
 
 .stat-value {{
     color: #f8fafc;
     font-size: 25px;
     font-weight: 800;
-    margin-top: 1px;
+    margin-top: 2px;
 }}
 
 
 /* =========================================================
-   CARDS
+   PANELS
    ========================================================= */
 
 .panel {{
-    background:
-        linear-gradient(145deg, rgba(17,28,46,.90), rgba(7,13,24,.86));
-    border: 1px solid rgba(148,163,184,.13);
-    border-radius: 19px;
-    padding: 22px;
-    margin-bottom: 18px;
-    box-shadow: 0 18px 50px rgba(0,0,0,.20);
-    animation: fadeUp .65s ease both;
+    background: linear-gradient(160deg, rgba(16,25,41,.9), rgba(6,10,19,.86));
+    border: 1px solid rgba(148,163,184,.12);
+    border-radius: 17px;
+    padding: 20px 22px;
+    margin-bottom: 16px;
+    box-shadow: 0 16px 44px rgba(0,0,0,.22);
 }}
 
 .panel-title {{
-    font-size: 20px;
+    font-size: 19px;
     font-weight: 800;
     color: #f8fafc;
-}}
-
-.panel-sub {{
-    color: #69788d;
-    font-size: 11px;
-    margin-top: 2px;
-    margin-bottom: 18px;
 }}
 
 .mini-title {{
@@ -618,14 +576,42 @@ section[data-testid="stSidebar"] * {{
 
 
 /* =========================================================
+   PAYMENT / STATUS COLORS
+   ========================================================= */
+
+.pay-badge {{
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 8px;
+    font-weight: 800;
+    font-size: 12px;
+}}
+
+.pay-full {{
+    color: #34c37e;
+    background: rgba(52,195,126,.12);
+}}
+
+.pay-partial {{
+    color: #e8ab2e;
+    background: rgba(232,171,46,.14);
+}}
+
+.pay-none {{
+    color: #f16b76;
+    background: rgba(241,107,118,.12);
+}}
+
+
+/* =========================================================
    INPUTS
    ========================================================= */
 
 div[data-baseweb="input"] > div,
 div[data-baseweb="textarea"] > div,
 div[data-baseweb="select"] > div {{
-    background: #0d1728 !important;
-    border: 1px solid #26364f !important;
+    background: #0c1524 !important;
+    border: 1px solid #24334c !important;
     border-radius: 10px !important;
     transition: border-color .2s ease, box-shadow .2s ease;
 }}
@@ -643,12 +629,12 @@ input, textarea {{
 
 input::placeholder,
 textarea::placeholder {{
-    color: #536176 !important;
+    color: #4c586e !important;
 }}
 
 label {{
     color: #cbd5e1 !important;
-    font-size: 12px !important;
+    font-size: 12.5px !important;
     font-weight: 600 !important;
 }}
 
@@ -662,17 +648,17 @@ label {{
     border: 0 !important;
     border-radius: 10px !important;
     min-height: 44px;
-    background: linear-gradient(135deg, #f21f33, #bc1021) !important;
+    background: linear-gradient(135deg, #f21f33, #b30f1f) !important;
     color: #fff !important;
     font-weight: 800 !important;
-    transition: transform .2s ease, box-shadow .2s ease, filter .2s ease;
+    transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
 }}
 
 .stButton > button:hover,
 .stFormSubmitButton > button:hover {{
     transform: translateY(-2px);
     filter: brightness(1.08);
-    box-shadow: 0 12px 28px rgba(226,27,43,.28);
+    box-shadow: 0 12px 26px rgba(226,27,43,.3);
 }}
 
 
@@ -681,8 +667,8 @@ label {{
    ========================================================= */
 
 [data-testid="stDataFrame"] {{
-    border: 1px solid rgba(148,163,184,.15);
-    border-radius: 14px;
+    border: 1px solid rgba(148,163,184,.14);
+    border-radius: 13px;
     overflow: hidden;
 }}
 
@@ -711,9 +697,9 @@ hr {{
 
 .footer {{
     text-align: center;
-    color: #465267;
+    color: #3e4a5e;
     font-size: 10px;
-    padding: 24px 0 4px;
+    padding: 22px 0 4px;
 }}
 
 .footer strong {{
@@ -776,6 +762,19 @@ def calculate_payment(total, deposit):
     if deposit > 0:
         return f"تم دفع عربون — المتبقي: {total - deposit:,.2f} ج"
     return "لم يدفع"
+
+
+def style_payment_status(val):
+    """لون مختلف وواضح لحالة الدفع، خصوصاً المتبقي."""
+    if not isinstance(val, str):
+        return ""
+    if "المتبقي" in val:
+        return "color:#e8ab2e;font-weight:800;"
+    if val == "تم الدفع بالكامل":
+        return "color:#34c37e;font-weight:800;"
+    if val == "لم يدفع":
+        return "color:#f16b76;font-weight:800;"
+    return ""
 
 
 def get_statistics():
@@ -986,9 +985,6 @@ if choice == "➕  تسجيل طلب جديد":
         """
         <div class="panel">
             <div class="panel-title">📝 تسجيل طلب جديد</div>
-            <div class="panel-sub">
-                أضف بيانات العميل والطلب والتكلفة وحالة التنفيذ.
-            </div>
         </div>
         """,
         unsafe_allow_html=True
@@ -1023,15 +1019,22 @@ if choice == "➕  تسجيل طلب جديد":
             total_cost = st.number_input(
                 "التكلفة الإجمالية (جنيه)",
                 min_value=0.0,
-                step=0.0,
-                format="%.0f"
+                value=None,
+                step=1.0,
+                format="%.0f",
+                placeholder="0"
             )
+            total_cost = total_cost if total_cost is not None else 0.0
 
             deposit = st.number_input(
                 "المبلغ المدفوع / العربون",
                 min_value=0.0,
-                step=0.0,
+                value=None,
+                step=1.0,
+                format="%.0f",
+                placeholder="0"
             )
+            deposit = deposit if deposit is not None else 0.0
 
             order_status = st.selectbox(
                 "حالة الطلب",
@@ -1135,9 +1138,6 @@ elif choice == "📋  عرض واستعلام الطلبات":
         """
         <div class="panel">
             <div class="panel-title">📋 الطلبات المسجلة</div>
-            <div class="panel-sub">
-                ابحث عن العملاء واستعرض جميع الطلبات والحسابات.
-            </div>
         </div>
         """,
         unsafe_allow_html=True
@@ -1203,8 +1203,13 @@ elif choice == "📋  عرض واستعلام الطلبات":
         if status_filter != "الكل":
             df = df[df["حالة الطلب"] == status_filter]
 
+        styled_df = df.style.map(
+            style_payment_status,
+            subset=["حالة الدفع"]
+        )
+
         st.dataframe(
-            df,
+            styled_df,
             use_container_width=True,
             hide_index=True,
             height=520,
@@ -1229,9 +1234,6 @@ elif choice == "⚙️  تحديث حالة طلب":
         """
         <div class="panel">
             <div class="panel-title">⚙️ تحديث حالة طلب</div>
-            <div class="panel-sub">
-                عدّل العربون وحالة التنفيذ وسيتم تحديث حالة الدفع تلقائياً.
-            </div>
         </div>
         """,
         unsafe_allow_html=True
@@ -1319,11 +1321,15 @@ elif choice == "⚙️  تحديث حالة طلب":
                 )
 
                 if remaining > 0:
-                    st.info(
-                        f"المتبقي: {remaining:,.2f} جنيه"
+                    st.markdown(
+                        f'<span class="pay-badge pay-partial">المتبقي: {remaining:,.2f} جنيه</span>',
+                        unsafe_allow_html=True
                     )
                 elif total_cost > 0:
-                    st.success("✅ تم دفع الطلب بالكامل.")
+                    st.markdown(
+                        '<span class="pay-badge pay-full">✅ تم دفع الطلب بالكامل</span>',
+                        unsafe_allow_html=True
+                    )
 
         with col2:
 
@@ -1399,19 +1405,6 @@ elif choice == "⚙️  تحديث حالة طلب":
 # =========================================================
 elif choice == "📝  المفكرة اليومية":
 
-    st.markdown(
-        """
-        <div class="panel">
-            <div class="panel-title">📝 المفكرة اليومية</div>
-            <div class="panel-sub">
-                اكتب أي ملاحظات أو مهام أو تعليمات خاصة بالمطبعة.
-                كل يوم له ملاحظة مستقلة بالتاريخ.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
     today = date.today()
     today_iso = today.isoformat()
 
@@ -1419,9 +1412,6 @@ elif choice == "📝  المفكرة اليومية":
         f"""
         <div class="panel">
             <div class="panel-title">📌 ملاحظة يوم {today_iso}</div>
-            <div class="panel-sub">
-                أي كلام تكتبه هنا يتم حفظه لهذا اليوم فقط ويمكن تعديله لاحقاً.
-            </div>
         </div>
         """,
         unsafe_allow_html=True
@@ -1471,9 +1461,6 @@ elif choice == "📝  المفكرة اليومية":
             """
             <div class="panel">
                 <div class="panel-title">🗓️ الملاحظات السابقة</div>
-                <div class="panel-sub">
-                    آخر 10 أيام تم تسجيل ملاحظات بها.
-                </div>
             </div>
             """,
             unsafe_allow_html=True
@@ -1495,9 +1482,6 @@ elif choice == "☁️  النسخ الاحتياطي (Google Drive)":
         """
         <div class="panel">
             <div class="panel-title">☁️ حماية البيانات — Google Drive</div>
-            <div class="panel-sub">
-                بعد كل حفظ، نسخة مضغوطة من قاعدة البيانات تُرفع تلقائياً إلى مجلد ZERO BACKUPS في Google Drive.
-            </div>
         </div>
         """,
         unsafe_allow_html=True
@@ -1516,7 +1500,6 @@ elif choice == "☁️  النسخ الاحتياطي (Google Drive)":
             6) ضعه في Streamlit Secrets مع السر الموجود في Apps Script.
             """
         )
-        st.info("لا تحتاج Google Cloud Project أو Service Account أو Drive API.")
     else:
         st.success("✅ Google Drive Backup متصل.")
 
