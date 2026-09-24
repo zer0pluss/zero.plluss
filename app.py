@@ -13,7 +13,7 @@ import streamlit as st
 st.set_page_config(
     page_title="ZERO Advertising | Management System",
     layout="wide",
-    initial_sidebar_state="collapsed",  # مهم جداً للموبايل
+    initial_sidebar_state="collapsed",
 )
 
 # =========================================================
@@ -128,7 +128,6 @@ def _db_to_excel_bytes():
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
             for table in ("customers", "orders", "daily_notes"):
                 df = pd.read_sql_query(f"SELECT * FROM {table}", conn)
-                # Excel sheet names are limited to 31 chars; these are all safe.
                 df.to_excel(writer, sheet_name=table, index=False)
     finally:
         conn.close()
@@ -142,7 +141,6 @@ def _excel_bytes_to_db(excel_bytes, target_path):
     if not required.issubset(set(xls.sheet_names)):
         raise ValueError("ملف Excel لا يحتوي على جداول قاعدة البيانات المطلوبة.")
 
-    # Build a fresh database using the same schema, then insert the rows.
     if FilePath(target_path).exists():
         FilePath(target_path).unlink()
 
@@ -180,7 +178,6 @@ def _excel_bytes_to_db(excel_bytes, target_path):
 
         for table in ("customers", "orders", "daily_notes"):
             df = pd.read_excel(xls, sheet_name=table, engine="openpyxl")
-            # Convert NaN to None so SQLite stores SQL NULLs cleanly.
             df = df.where(pd.notna(df), None)
             if not df.empty:
                 columns = list(df.columns)
@@ -303,12 +300,15 @@ if not FilePath(DB_NAME).exists():
 init_db()
 
 # =========================================================
-# CSS / PREMIUM DESIGN
+# DESIGN — "ink & paper ledger"
+# Warm paper surface, charcoal ink, a single stamp-red accent.
+# Two Arabic type families: Cairo (display/numbers) + IBM Plex
+# Sans Arabic (body/labels), evoking a print-shop invoice book
+# rather than a generic dark SaaS dashboard.
 # =========================================================
 def set_custom_design():
 
     background_css = ""
-
     if logo_b64:
         background_css = f"""
         .stApp::before {{
@@ -317,10 +317,10 @@ def set_custom_design():
             inset: 0;
             background-image: url("data:image/jpg;base64,{logo_b64}");
             background-repeat: no-repeat;
-            background-position: 20% 30%;
-            background-size: min(1000px, 65vw);
+            background-position: 108% 8%;
+            background-size: min(420px, 40vw);
             opacity: 0.05;
-            filter: none;
+            filter: grayscale(1);
             pointer-events: none;
             z-index: 0;
         }}
@@ -330,23 +330,39 @@ def set_custom_design():
         f"""
 <style>
 
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@500;700;800;900&family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap');
 
 /* =========================================================
-   CORE
+   TOKENS
    ========================================================= */
+:root {{
+    --paper: #F6F3EC;
+    --panel: #FFFFFF;
+    --ink: #201C17;
+    --ink-soft: #6B6255;
+    --hairline: #E4DDCE;
+    --stamp: #A8142B;
+    --stamp-soft: rgba(168,20,43,.09);
+    --gold: #9C7A2E;
+    --good: #1F6E44;
+    --good-soft: rgba(31,110,68,.10);
+    --warn: #9C6B0B;
+    --warn-soft: rgba(156,107,11,.12);
+    --bad: #A8142B;
+    --bad-soft: rgba(168,20,43,.09);
+}}
 
 html, body, [class*="css"] {{
     direction: rtl;
-    font-family: 'Cairo', sans-serif !important;
+    font-family: 'IBM Plex Sans Arabic', 'Cairo', sans-serif;
 }}
 
 .stApp {{
-    background:
-        radial-gradient(circle at 12% 8%, rgba(226,27,43,.09), transparent 30%),
-        radial-gradient(circle at 88% 85%, rgba(217,164,65,.06), transparent 34%),
-        linear-gradient(160deg, #05070c 0%, #090d16 45%, #05070c 100%);
-    color: #eef2f7;
+    background: var(--paper);
+    color: var(--ink);
+    background-image:
+        linear-gradient(var(--paper), var(--paper)),
+        repeating-linear-gradient(0deg, rgba(32,28,23,.018) 0px, rgba(32,28,23,.018) 1px, transparent 1px, transparent 34px);
 }}
 
 {background_css}
@@ -354,286 +370,256 @@ html, body, [class*="css"] {{
 .main .block-container {{
     position: relative;
     z-index: 1;
-    max-width: 1500px;
-    padding-top: 1.4rem;
+    max-width: 1480px;
+    padding-top: 1rem;
     padding-bottom: 2.5rem;
 }}
 
-#MainMenu,
-footer {{
-    visibility: hidden;
-}}
+#MainMenu, footer {{ visibility: hidden; }}
+header {{ background: transparent !important; }}
 
-header {{
-    background: transparent !important;
+h1, h2, h3, h4, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {{
+    font-family: 'Cairo', sans-serif;
+    color: var(--ink);
 }}
 
 
 /* =========================================================
    SIDEBAR
    ========================================================= */
-
 section[data-testid="stSidebar"] {{
-    background: linear-gradient(180deg, #05080e 0%, #080c15 55%, #05070c 100%) !important;
-    border-left: 1px solid rgba(226,27,43,.5);
-    overflow: hidden !important;
+    background: var(--panel) !important;
+    border-left: 1px solid var(--hairline);
 }}
 
 section[data-testid="stSidebar"] > div {{
-    padding: 1rem .85rem 1.5rem;
+    padding: 1.1rem .9rem 1.5rem;
 }}
 
 section[data-testid="stSidebar"] * {{
-    color: #f1f5f9 !important;
+    color: var(--ink) !important;
 }}
 
 .brand-box {{
-    text-align: center;
-    padding: 10px 4px 18px;
+    padding: 6px 4px 18px;
+    border-bottom: 1px solid var(--hairline);
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
 }}
 
 .brand-logo {{
-    width: 108px;
-    height: 108px;
+    width: 52px;
+    height: 52px;
     object-fit: cover;
-    border-radius: 16px;
-    border: 1px solid rgba(255,255,255,.12);
-    box-shadow: 0 16px 40px rgba(0,0,0,.5);
+    border-radius: 8px;
+    border: 1px solid var(--hairline);
+    flex-shrink: 0;
+}}
+
+.brand-mark {{
+    width: 52px;
+    height: 52px;
+    border-radius: 8px;
+    border: 2px solid var(--stamp);
+    color: var(--stamp);
+    font-family: 'Cairo', sans-serif;
+    font-weight: 900;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
 }}
 
 .brand-name {{
-    font-size: 20px;
+    font-family: 'Cairo', sans-serif;
+    font-size: 17px;
     font-weight: 800;
-    margin-top: 12px;
-    letter-spacing: .2px;
+    line-height: 1.3;
 }}
 
 .brand-caption {{
-    color: #6c7a90 !important;
+    color: var(--ink-soft) !important;
     font-size: 11px;
-    margin-top: 3px;
+    margin-top: 1px;
 }}
 
 .side-label {{
-    color: #5c6a80 !important;
+    color: var(--ink-soft) !important;
     font-size: 11px;
     font-weight: 600;
-    margin: 16px 3px 8px;
+    margin: 4px 3px 8px;
+}}
+
+/* Radio-based nav styled as a menu list */
+section[data-testid="stSidebar"] div[role="radiogroup"] {{
+    gap: 3px;
+}}
+section[data-testid="stSidebar"] div[role="radiogroup"] label {{
+    padding: 10px 12px !important;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    transition: background .12s ease, border-color .12s ease;
+}}
+section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {{
+    background: var(--stamp-soft);
+}}
+section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {{
+    background: var(--stamp-soft);
+    border-color: rgba(168,20,43,.25);
+}}
+section[data-testid="stSidebar"] div[role="radiogroup"] label p {{
+    font-size: 13.5px !important;
+    font-weight: 600;
 }}
 
 .side-note {{
-    background: linear-gradient(160deg, rgba(18,27,44,.9), rgba(8,13,23,.9));
-    border: 1px solid rgba(148,163,184,.12);
-    border-right: 2px solid #d9a441;
-    border-radius: 12px;
-    padding: 14px;
-    margin-top: 14px;
+    background: var(--paper);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    padding: 12px 13px;
+    margin-top: 16px;
 }}
-
 .side-note-title {{
-    font-weight: 800;
-    font-size: 13px;
-    color: #f8fafc !important;
+    font-weight: 700;
+    font-size: 12.5px;
+    color: var(--ink) !important;
 }}
-
 .side-note-date {{
-    font-size: 10px;
-    color: #6c7a90 !important;
-    margin-top: 3px;
+    font-size: 10.5px;
+    color: var(--ink-soft) !important;
+    margin-top: 2px;
 }}
-
 .side-note-text {{
-    margin-top: 9px;
+    margin-top: 7px;
     font-size: 11.5px;
-    line-height: 1.85;
-    color: #b9c3d1 !important;
+    line-height: 1.75;
+    color: #4A4438 !important;
     white-space: pre-wrap;
 }}
 
 
 /* =========================================================
-   HERO
+   TOP BAR
    ========================================================= */
-
-.hero {{
-    background: linear-gradient(115deg, rgba(19,29,47,.92), rgba(7,11,20,.85));
-    border: 1px solid rgba(148,163,184,.13);
-    border-radius: 18px;
-    padding: 26px 28px;
-    margin-bottom: 20px;
-    position: relative;
-    overflow: hidden;
-    animation: heroIn .6s cubic-bezier(.2,.8,.2,1) both;
+.topbar {{
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding-bottom: 14px;
+    margin-bottom: 18px;
+    border-bottom: 2px solid var(--ink);
 }}
-
-.hero::after {{
-    content: "";
-    position: absolute;
-    top: 0;
-    right: 0;
-    width: 5px;
-    height: 100%;
-    background: linear-gradient(#ff2639, #7a0d18);
-}}
-
-@keyframes heroIn {{
-    from {{ opacity: 0; transform: translateY(-10px); }}
-    to   {{ opacity: 1; transform: translateY(0); }}
-}}
-
-.hero-title {{
-    font-size: 27px;
+.topbar-title {{
+    font-family: 'Cairo', sans-serif;
+    font-size: 26px;
     font-weight: 800;
-    color: #ffffff;
-    line-height: 1.4;
-    word-break: break-word;
+    color: var(--ink);
+    letter-spacing: .2px;
 }}
-
-.hero-sub {{
-    color: #7a889d;
-    font-size: 12px;
-    margin-top: 4px;
+.topbar-date {{
+    font-family: 'Cairo', sans-serif;
+    font-size: 13px;
+    color: var(--ink-soft);
     font-weight: 600;
 }}
 
 
 /* =========================================================
-   STAT CARDS
+   LEDGER STATS STRIP
    ========================================================= */
-
-.stat-card {{
-    background: linear-gradient(160deg, rgba(19,29,47,.95), rgba(7,11,20,.92));
-    border: 1px solid rgba(148,163,184,.11);
-    border-radius: 16px;
-    padding: 19px 20px;
-    min-height: 116px;
-    position: relative;
+.ledger {{
+    display: flex;
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+    background: var(--panel);
     overflow: hidden;
-    transition: transform .25s ease, border-color .25s ease, box-shadow .25s ease;
+    margin-bottom: 22px;
 }}
-
-.stat-card:hover {{
-    transform: translateY(-4px);
-    border-color: rgba(226,27,43,.4);
-    box-shadow: 0 16px 34px rgba(0,0,0,.32);
+.ledger-cell {{
+    flex: 1;
+    padding: 16px 20px;
+    border-left: 1px solid var(--hairline);
 }}
-
-.stat-card::before {{
-    content: "";
-    position: absolute;
-    top: 0;
-    right: 0;
-    width: 3px;
-    height: 100%;
-    background: #e21b2b;
-}}
-
-.stat-icon {{
-    font-size: 21px;
-    opacity: .95;
-}}
-
-.stat-title {{
-    color: #71809a;
-    font-size: 11.5px;
-    font-weight: 600;
-    margin-top: 6px;
-}}
-
-.stat-value {{
-    color: #f8fafc;
-    font-size: 25px;
+.ledger-cell:last-child {{ border-left: none; }}
+.ledger-value {{
+    font-family: 'Cairo', sans-serif;
+    font-size: 26px;
     font-weight: 800;
-    margin-top: 2px;
+    color: var(--ink);
+}}
+.ledger-label {{
+    font-size: 11.5px;
+    color: var(--ink-soft);
+    margin-top: 3px;
 }}
 
 
 /* =========================================================
    PANELS
    ========================================================= */
-
-.panel {{
-    background: linear-gradient(160deg, rgba(16,25,41,.9), rgba(6,10,19,.86));
-    border: 1px solid rgba(148,163,184,.12);
-    border-radius: 17px;
-    padding: 20px 22px;
-    margin-bottom: 16px;
-    box-shadow: 0 16px 44px rgba(0,0,0,.22);
+.panel-head {{
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
 }}
-
 .panel-title {{
-    font-size: 19px;
+    font-family: 'Cairo', sans-serif;
+    font-size: 18px;
     font-weight: 800;
-    color: #f8fafc;
+    color: var(--ink);
 }}
-
-.mini-title {{
-    color: #d8dee8;
-    font-size: 14px;
-    font-weight: 800;
-    margin-bottom: 9px;
+.panel-rule {{
+    flex: 1;
+    height: 1px;
+    background: var(--hairline);
 }}
 
 
 /* =========================================================
-   PAYMENT / STATUS COLORS
+   PAYMENT BADGES
    ========================================================= */
-
-.pay-badge {{
-    display: inline-block;
-    padding: 3px 10px;
+.badge {{
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 16px;
     border-radius: 8px;
-    font-weight: 800;
-    font-size: 12px;
+    font-weight: 700;
+    font-size: 14px;
+    line-height: 1.4;
 }}
-
-.pay-full {{
-    color: #34c37e;
-    background: rgba(52,195,126,.12);
-}}
-
-.pay-partial {{
-    color: #e8ab2e;
-    background: rgba(232,171,46,.14);
-}}
-
-.pay-none {{
-    color: #f16b76;
-    background: rgba(241,107,118,.12);
-}}
+.badge-unpaid {{ background: var(--bad-soft); color: var(--bad); border: 1px solid rgba(168,20,43,.30); }}
+.badge-partial {{ background: var(--warn-soft); color: var(--warn); border: 1px solid rgba(156,107,11,.30); }}
+.badge-paid {{ background: var(--good-soft); color: var(--good); border: 1px solid rgba(31,110,68,.30); }}
+.badge-neutral {{ background: #F1EDE2; color: var(--ink-soft); border: 1px solid var(--hairline); }}
+.badge strong {{ font-family: 'Cairo', sans-serif; }}
 
 
 /* =========================================================
    INPUTS
    ========================================================= */
-
 div[data-baseweb="input"] > div,
 div[data-baseweb="textarea"] > div,
 div[data-baseweb="select"] > div {{
-    background: #0c1524 !important;
-    border: 1px solid #24334c !important;
-    border-radius: 10px !important;
-    transition: border-color .2s ease, box-shadow .2s ease;
+    background: var(--panel) !important;
+    border: 1px solid var(--hairline) !important;
+    border-radius: 8px !important;
+    transition: border-color .15s ease, box-shadow .15s ease;
 }}
-
 div[data-baseweb="input"] > div:focus-within,
 div[data-baseweb="textarea"] > div:focus-within,
 div[data-baseweb="select"] > div:focus-within {{
-    border-color: rgba(226,27,43,.65) !important;
-    box-shadow: 0 0 0 3px rgba(226,27,43,.08);
+    border-color: var(--stamp) !important;
+    box-shadow: 0 0 0 3px rgba(168,20,43,.08);
 }}
-
-input, textarea {{
-    color: #f8fafc !important;
-}}
-
-input::placeholder,
-textarea::placeholder {{
-    color: #4c586e !important;
-}}
-
-label {{
-    color: #cbd5e1 !important;
+input, textarea {{ color: var(--ink) !important; }}
+input::placeholder, textarea::placeholder {{ color: #A69C89 !important; }}
+label, .stNumberInput label, .stTextInput label, .stTextArea label, .stSelectbox label {{
+    color: #4A4438 !important;
     font-size: 12.5px !important;
     font-weight: 600 !important;
 }}
@@ -642,111 +628,74 @@ label {{
 /* =========================================================
    BUTTONS
    ========================================================= */
-
-.stButton > button,
-.stFormSubmitButton > button {{
-    border: 0 !important;
-    border-radius: 10px !important;
+.stButton > button, .stFormSubmitButton > button {{
+    border: 1px solid var(--stamp) !important;
+    border-radius: 8px !important;
     min-height: 44px;
-    background: linear-gradient(135deg, #f21f33, #b30f1f) !important;
-    color: #fff !important;
-    font-weight: 800 !important;
-    transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
+    background: var(--stamp) !important;
+    color: #FBF8F2 !important;
+    font-weight: 700 !important;
+    font-family: 'Cairo', sans-serif;
+    transition: filter .15s ease, transform .1s ease;
 }}
-
-.stButton > button:hover,
-.stFormSubmitButton > button:hover {{
-    transform: translateY(-2px);
+.stButton > button:hover, .stFormSubmitButton > button:hover {{
     filter: brightness(1.08);
-    box-shadow: 0 12px 26px rgba(226,27,43,.3);
+}}
+.stButton > button:active, .stFormSubmitButton > button:active {{
+    transform: translateY(1px);
 }}
 
 
 /* =========================================================
    DATAFRAME
    ========================================================= */
-
 [data-testid="stDataFrame"] {{
-    border: 1px solid rgba(148,163,184,.14);
-    border-radius: 13px;
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
     overflow: hidden;
 }}
 
-
-/* =========================================================
-   MESSAGES
-   ========================================================= */
-
-div[data-testid="stAlert"] {{
-    border-radius: 11px;
-}}
-
-
-/* =========================================================
-   DIVIDER
-   ========================================================= */
-
-hr {{
-    border-color: rgba(148,163,184,.10) !important;
-}}
+div[data-testid="stAlert"] {{ border-radius: 8px; }}
+hr {{ border-color: var(--hairline) !important; }}
 
 
 /* =========================================================
    FOOTER
    ========================================================= */
-
 .footer {{
     text-align: center;
-    color: #3e4a5e;
-    font-size: 10px;
-    padding: 22px 0 4px;
+    color: var(--ink-soft);
+    font-size: 10.5px;
+    padding: 26px 0 4px;
+    border-top: 1px solid var(--hairline);
+    margin-top: 10px;
+    padding-top: 14px;
 }}
-
-.footer strong {{
-    color: #e21b2b;
-}}
+.footer strong {{ color: var(--stamp); }}
 
 
 /* =========================================================
-   MOBILE FIXES
+   MOBILE
    ========================================================= */
-
 @media (max-width: 768px) {{
-
-    .hero-title {{
-        font-size: 20px;
-    }}
-
-    .panel-title {{
-        font-size: 17px;
-    }}
-
+    .topbar-title {{ font-size: 20px; }}
+    .panel-title {{ font-size: 16px; }}
     div[data-testid="stHorizontalBlock"] {{
         flex-wrap: wrap !important;
         gap: 0.6rem;
     }}
-
     div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {{
         flex: 1 1 100% !important;
         min-width: 100% !important;
         width: 100% !important;
     }}
-
-    .stat-card {{
-        min-height: 95px;
-        padding: 14px 15px;
-    }}
-
-    .stat-value {{
-        font-size: 22px;
-    }}
-
-    section[data-testid="stSidebar"][aria-expanded="false"] {{
-        visibility: hidden;
-    }}
+    .ledger {{ flex-wrap: wrap; }}
+    .ledger-cell {{ flex: 1 1 50%; border-bottom: 1px solid var(--hairline); }}
+    .ledger-value {{ font-size: 21px; }}
+    section[data-testid="stSidebar"][aria-expanded="false"] {{ visibility: hidden; }}
 }}
 
-</style>  """,
+</style>""",
         unsafe_allow_html=True,
     )
 
@@ -764,27 +713,43 @@ def calculate_payment(total, deposit):
     return "لم يدفع"
 
 
-def style_payment_status(val):
-    """لون مختلف وواضح لحالة الدفع، خصوصاً المتبقي."""
-    if not isinstance(val, str):
-        return ""
-    if "المتبقي" in val:
-        return "color:#e8ab2e;font-weight:800;"
-    if val == "تم الدفع بالكامل":
-        return "color:#34c37e;font-weight:800;"
+def payment_badge_html(total, deposit):
+    """A clearly-colored badge: red = unpaid, amber = remaining balance, green = paid in full."""
+    total = total or 0
+    deposit = deposit or 0
+    if total <= 0:
+        return '<span class="badge badge-neutral">لا توجد تكلفة مسجّلة بعد</span>'
+    remaining = total - deposit
+    if deposit <= 0:
+        return f'<span class="badge badge-unpaid">لم يُدفع شيء — <strong>{total:,.0f} ج</strong> مستحقة</span>'
+    if remaining <= 0:
+        return '<span class="badge badge-paid">✓ تم الدفع بالكامل</span>'
+    return f'<span class="badge badge-partial">المتبقي <strong>{remaining:,.0f} ج</strong> — من إجمالي {total:,.0f} ج</span>'
+
+
+def style_payment_cell(val):
     if val == "لم يدفع":
-        return "color:#f16b76;font-weight:800;"
+        return f"color:{'#A8142B'}; font-weight:700;"
+    if isinstance(val, str) and val.startswith("تم دفع عربون"):
+        return "color:#9C6B0B; font-weight:700;"
+    if val == "تم الدفع بالكامل":
+        return "color:#1F6E44; font-weight:700;"
     return ""
+
+
+def style_remaining_cell(val):
+    try:
+        v = float(val)
+    except (TypeError, ValueError):
+        return ""
+    if v > 0:
+        return "color:#9C6B0B; font-weight:800;"
+    return "color:#1F6E44; font-weight:700;"
 
 
 def get_statistics():
     conn = get_connection()
-
-    df = pd.read_sql_query(
-        "SELECT total_cost, order_status FROM orders",
-        conn
-    )
-
+    df = pd.read_sql_query("SELECT total_cost, order_status FROM orders", conn)
     conn.close()
 
     if df.empty:
@@ -801,24 +766,19 @@ def get_statistics():
 def get_today_note():
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute(
         "SELECT note_text FROM daily_notes WHERE note_date = ?",
         (date.today().isoformat(),)
     )
-
     row = cursor.fetchone()
     conn.close()
-
     return row[0] if row else ""
 
 
 def save_today_note(note_text):
     conn = get_connection()
     cursor = conn.cursor()
-
     today = date.today().isoformat()
-
     cursor.execute("""
         INSERT INTO daily_notes (note_date, note_text, updated_at)
         VALUES (?, ?, CURRENT_TIMESTAMP)
@@ -827,14 +787,12 @@ def save_today_note(note_text):
             note_text = excluded.note_text,
             updated_at = CURRENT_TIMESTAMP
     """, (today, note_text))
-
     conn.commit()
     conn.close()
 
 
 def get_recent_notes(limit=5):
     conn = get_connection()
-
     df = pd.read_sql_query(
         """
         SELECT note_date, note_text
@@ -846,7 +804,6 @@ def get_recent_notes(limit=5):
         conn,
         params=(limit,)
     )
-
     conn.close()
     return df
 
@@ -860,23 +817,30 @@ with st.sidebar:
         st.markdown(
             f"""
             <div class="brand-box">
-                <img class="brand-logo"
-                     src="data:image/jpeg;base64,{logo_b64}">
-                <div class="brand-name">ZERO PLUS</div>
-                <div class="brand-caption">
-                    PRINT • DESIGN • ADVERTISING
+                <img class="brand-logo" src="data:image/jpeg;base64,{logo_b64}">
+                <div>
+                    <div class="brand-name">ZERO PLUS</div>
+                    <div class="brand-caption">طباعة وتصميم وإعلان</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    else:
+        st.markdown(
+            """
+            <div class="brand-box">
+                <div class="brand-mark">Z</div>
+                <div>
+                    <div class="brand-name">ZERO PLUS</div>
+                    <div class="brand-caption">طباعة وتصميم وإعلان</div>
                 </div>
             </div>
             """,
             unsafe_allow_html=True
         )
 
-    st.divider()
-
-    st.markdown(
-        '<div class="side-label">القائمة الرئيسية</div>',
-        unsafe_allow_html=True
-    )
+    st.markdown('<div class="side-label">القائمة الرئيسية</div>', unsafe_allow_html=True)
 
     menu = [
         "➕  تسجيل طلب جديد",
@@ -886,29 +850,19 @@ with st.sidebar:
         "☁️  النسخ الاحتياطي (Google Drive)",
     ]
 
-    choice = st.selectbox(
-        "القائمة",
-        menu,
-        label_visibility="collapsed"
-    )
+    choice = st.radio("القائمة", menu, label_visibility="collapsed")
 
-    st.divider()
-
-    # Small preview of today's note
     today_note = get_today_note()
 
     if today_note:
         preview = today_note[:150]
         if len(today_note) > 150:
             preview += "..."
-
         st.markdown(
             f"""
             <div class="side-note">
-                <div class="side-note-title">📌 Today note</div>
-                <div class="side-note-date">
-                    {date.today().strftime("%Y-%m-%d")}
-                </div>
+                <div class="side-note-title">📌 ملاحظة اليوم</div>
+                <div class="side-note-date">{date.today().strftime("%Y-%m-%d")}</div>
                 <div class="side-note-text">{preview}</div>
             </div>
             """,
@@ -919,29 +873,22 @@ with st.sidebar:
             """
             <div class="side-note">
                 <div class="side-note-title">📌 مفيش ملاحظات</div>
-                <div class="side-note-date">
-                    اكتب ملاحظة من قسم المفكرة اليومية
-                </div>
+                <div class="side-note-date">اكتب واحدة من المفكرة اليومية</div>
             </div>
             """,
             unsafe_allow_html=True
         )
 
 # =========================================================
-# TOP HEADER
+# TOP BAR
 # =========================================================
 today_text = date.today().strftime("%Y-%m-%d")
 
 st.markdown(
     f"""
-    <div class="hero">
-        <div style="display:flex;justify-content:space-between;
-                    align-items:center;gap:20px;direction:ltr">
-            <div>
-                <div class="hero-title">ZERO Advertising | Management System</div>
-                <div class="hero-sub">{today_text}</div>
-            </div>
-        </div>
+    <div class="topbar">
+        <div class="topbar-title">ZERO Advertising</div>
+        <div class="topbar-date">{today_text}</div>
     </div>
     """,
     unsafe_allow_html=True
@@ -952,29 +899,24 @@ st.markdown(
 # =========================================================
 total_orders, completed, in_progress, total_sales = get_statistics()
 
-c1, c2, c3, c4 = st.columns(4)
-
 stats = [
-    ("📦", "إجمالي الطلبات", total_orders),
-    ("🚀", "طلبات قيد التنفيذ", in_progress),
-    ("✅", "تم التسليم", completed),
-    ("💰", "إجمالي قيمة الطلبات", f"{total_sales:,.0f} ج"),
+    ("إجمالي الطلبات", total_orders),
+    ("قيد التنفيذ", in_progress),
+    ("تم التسليم", completed),
+    ("إجمالي قيمة الطلبات", f"{total_sales:,.0f} ج"),
 ]
 
-for col, (icon, title, value) in zip([c1, c2, c3, c4], stats):
-    with col:
-        st.markdown(
-            f"""
-            <div class="stat-card">
-                <div class="stat-icon">{icon}</div>
-                <div class="stat-title">{title}</div>
-                <div class="stat-value">{value}</div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+ledger_html = '<div class="ledger">'
+for title, value in stats:
+    ledger_html += f"""
+        <div class="ledger-cell">
+            <div class="ledger-value">{value}</div>
+            <div class="ledger-label">{title}</div>
+        </div>
+    """
+ledger_html += "</div>"
 
-st.markdown("<br>", unsafe_allow_html=True)
+st.markdown(ledger_html, unsafe_allow_html=True)
 
 # =========================================================
 # 1. NEW ORDER
@@ -983,8 +925,9 @@ if choice == "➕  تسجيل طلب جديد":
 
     st.markdown(
         """
-        <div class="panel">
-            <div class="panel-title">📝 تسجيل طلب جديد</div>
+        <div class="panel-head">
+            <div class="panel-title">تسجيل طلب جديد</div>
+            <div class="panel-rule"></div>
         </div>
         """,
         unsafe_allow_html=True
@@ -995,19 +938,10 @@ if choice == "➕  تسجيل طلب جديد":
         col1, col2, col3 = st.columns(3)
 
         with col1:
-
-            customer_name = st.text_input(
-                "اسم العميل *",
-                placeholder="مثال: أحمد محمد"
-            )
-
-            customer_phone = st.text_input(
-                "رقم التليفون",
-                placeholder="01XXXXXXXXX"
-            )
+            customer_name = st.text_input("اسم العميل *", placeholder="مثال: أحمد محمد")
+            customer_phone = st.text_input("رقم التليفون", placeholder="01XXXXXXXXX")
 
         with col2:
-
             order_details = st.text_area(
                 "تفاصيل الطلب *",
                 placeholder="مثال: 500 فلاير — مقاس A5 — وجهين — ألوان...",
@@ -1015,104 +949,67 @@ if choice == "➕  تسجيل طلب جديد":
             )
 
         with col3:
-
             total_cost = st.number_input(
                 "التكلفة الإجمالية (جنيه)",
                 min_value=0.0,
+                step=25.0,
                 value=None,
-                step=1.0,
-                format="%.0f",
-                placeholder="0"
+                placeholder="0",
             )
-            total_cost = total_cost if total_cost is not None else 0.0
-
             deposit = st.number_input(
                 "المبلغ المدفوع / العربون",
                 min_value=0.0,
+                step=25.0,
                 value=None,
-                step=1.0,
-                format="%.0f",
-                placeholder="0"
+                placeholder="0",
             )
-            deposit = deposit if deposit is not None else 0.0
-
             order_status = st.selectbox(
                 "حالة الطلب",
                 ["قيد التنفيذ", "جاهز للتسليم", "تم التسليم"]
             )
 
-        st.divider()
+        total_cost_val = total_cost or 0.0
+        deposit_val = deposit or 0.0
 
-        if total_cost > 0:
-            remaining = total_cost - deposit
+        st.markdown("<div style='margin-top:6px'></div>", unsafe_allow_html=True)
 
-            if deposit > total_cost:
-                st.warning("⚠️ العربون أكبر من إجمالي قيمة الطلب.")
-            elif remaining > 0:
-                st.info(f"💳 المتبقي على العميل: {remaining:,.2f} جنيه")
-            else:
-                st.success("✅ تم دفع قيمة الطلب بالكامل.")
+        if deposit_val > total_cost_val and total_cost_val > 0:
+            st.markdown(
+                '<span class="badge badge-unpaid">⚠ العربون أكبر من إجمالي قيمة الطلب</span>',
+                unsafe_allow_html=True
+            )
+        else:
+            st.markdown(payment_badge_html(total_cost_val, deposit_val), unsafe_allow_html=True)
 
-        save = st.form_submit_button(
-            "💾  حفظ الطلب",
-            use_container_width=True
-        )
+        save = st.form_submit_button("💾  حفظ الطلب", use_container_width=True)
 
         if save:
 
             if not customer_name.strip():
-                st.error("❌ اكتب اسم العميل.")
-
+                st.error("اكتب اسم العميل.")
             elif not order_details.strip():
-                st.error("❌ اكتب تفاصيل الطلب.")
-
-            elif deposit > total_cost and total_cost > 0:
-                st.error("❌ العربون لا يمكن أن يكون أكبر من إجمالي الطلب.")
-
+                st.error("اكتب تفاصيل الطلب.")
+            elif deposit_val > total_cost_val and total_cost_val > 0:
+                st.error("العربون لا يمكن أن يكون أكبر من إجمالي الطلب.")
             else:
-
-                payment_status = calculate_payment(
-                    total_cost,
-                    deposit
-                )
+                payment_status = calculate_payment(total_cost_val, deposit_val)
 
                 conn = get_connection()
                 cursor = conn.cursor()
 
                 cursor.execute(
-                    """
-                    INSERT INTO customers (name, phone)
-                    VALUES (?, ?)
-                    """,
-                    (
-                        customer_name.strip(),
-                        customer_phone.strip()
-                    )
+                    "INSERT INTO customers (name, phone) VALUES (?, ?)",
+                    (customer_name.strip(), customer_phone.strip())
                 )
-
                 customer_id = cursor.lastrowid
 
                 cursor.execute(
                     """
                     INSERT INTO orders
-                    (
-                        customer_id,
-                        order_details,
-                        total_cost,
-                        deposit,
-                        payment_status,
-                        order_status
-                    )
+                    (customer_id, order_details, total_cost, deposit, payment_status, order_status)
                     VALUES (?, ?, ?, ?, ?, ?)
                     """,
-                    (
-                        customer_id,
-                        order_details.strip(),
-                        total_cost,
-                        deposit,
-                        payment_status,
-                        order_status
-                    )
+                    (customer_id, order_details.strip(), total_cost_val, deposit_val, payment_status, order_status)
                 )
 
                 conn.commit()
@@ -1120,14 +1017,9 @@ if choice == "➕  تسجيل طلب جديد":
 
                 backup_result = backup_after_save()
 
-                st.success(
-                    f"✅ تم حفظ طلب العميل «{customer_name}» بنجاح."
-                )
+                st.success(f"تم حفظ طلب العميل «{customer_name}» بنجاح.")
                 if not backup_result["success"]:
-                    st.warning(
-                        "⚠️ الداتا اتحفظت، لكن حصلت مشكلة في المزامنة السحابية: "
-                        + str(backup_result["error"])
-                    )
+                    st.warning("الداتا اتحفظت، لكن حصلت مشكلة في المزامنة السحابية: " + str(backup_result["error"]))
 
 # =========================================================
 # 2. ORDERS
@@ -1136,15 +1028,15 @@ elif choice == "📋  عرض واستعلام الطلبات":
 
     st.markdown(
         """
-        <div class="panel">
-            <div class="panel-title">📋 الطلبات المسجلة</div>
+        <div class="panel-head">
+            <div class="panel-title">الطلبات المسجلة</div>
+            <div class="panel-rule"></div>
         </div>
         """,
         unsafe_allow_html=True
     )
 
     conn = get_connection()
-
     df = pd.read_sql_query(
         """
         SELECT
@@ -1158,71 +1050,43 @@ elif choice == "📋  عرض واستعلام الطلبات":
             o.order_status AS 'حالة الطلب',
             o.order_date AS 'تاريخ الطلب'
         FROM orders o
-        JOIN customers c
-            ON o.customer_id = c.customer_id
+        JOIN customers c ON o.customer_id = c.customer_id
         ORDER BY o.order_id DESC
         """,
         conn
     )
-
     conn.close()
 
     if df.empty:
-        st.info("📭 لا توجد طلبات مسجلة حالياً.")
-
+        st.info("لا توجد طلبات مسجلة حالياً.")
     else:
-
         search_col, filter_col = st.columns(2)
 
         with search_col:
-            search_name = st.text_input(
-                "🔍 البحث",
-                placeholder="ابحث باسم العميل..."
-            )
+            search_name = st.text_input("🔍 البحث", placeholder="ابحث باسم العميل...")
 
         with filter_col:
             status_filter = st.selectbox(
                 "📌 حالة الطلب",
-                [
-                    "الكل",
-                    "قيد التنفيذ",
-                    "جاهز للتسليم",
-                    "تم التسليم"
-                ]
+                ["الكل", "قيد التنفيذ", "جاهز للتسليم", "تم التسليم"]
             )
 
         if search_name:
-            df = df[
-                df["اسم العميل"].str.contains(
-                    search_name,
-                    case=False,
-                    na=False
-                )
-            ]
+            df = df[df["اسم العميل"].str.contains(search_name, case=False, na=False)]
 
         if status_filter != "الكل":
             df = df[df["حالة الطلب"] == status_filter]
 
-        styled_df = df.style.map(
-            style_payment_status,
-            subset=["حالة الدفع"]
+        df["المتبقي"] = (df["الإجمالي"].fillna(0) - df["العربون"].fillna(0)).clip(lower=0)
+
+        styled = (
+            df.style
+            .format({"الإجمالي": "{:,.2f} ج", "العربون": "{:,.2f} ج", "المتبقي": "{:,.2f} ج"})
+            .map(style_payment_cell, subset=["حالة الدفع"])
+            .map(style_remaining_cell, subset=["المتبقي"])
         )
 
-        st.dataframe(
-            styled_df,
-            use_container_width=True,
-            hide_index=True,
-            height=520,
-            column_config={
-                "الإجمالي": st.column_config.NumberColumn(
-                    format="%.2f ج"
-                ),
-                "العربون": st.column_config.NumberColumn(
-                    format="%.2f ج"
-                ),
-            }
-        )
-
+        st.dataframe(styled, use_container_width=True, hide_index=True, height=520)
         st.caption(f"عدد النتائج: {len(df)}")
 
 # =========================================================
@@ -1232,8 +1096,9 @@ elif choice == "⚙️  تحديث حالة طلب":
 
     st.markdown(
         """
-        <div class="panel">
-            <div class="panel-title">⚙️ تحديث حالة طلب</div>
+        <div class="panel-head">
+            <div class="panel-title">تحديث حالة طلب</div>
+            <div class="panel-rule"></div>
         </div>
         """,
         unsafe_allow_html=True
@@ -1246,59 +1111,29 @@ elif choice == "⚙️  تحديث حالة طلب":
         """
         SELECT o.order_id, c.name
         FROM orders o
-        JOIN customers c
-            ON o.customer_id = c.customer_id
+        JOIN customers c ON o.customer_id = c.customer_id
         ORDER BY o.order_id DESC
         """
     )
-
     orders = cursor.fetchall()
 
     if not orders:
-
-        st.info("📭 لا توجد طلبات لتعديلها.")
-
+        st.info("لا توجد طلبات لتعديلها.")
     else:
-
-        options = {
-            f"طلب #{order_id} — {name}": order_id
-            for order_id, name in orders
-        }
-
-        selected_label = st.selectbox(
-            "📌 اختر الطلب",
-            list(options.keys())
-        )
-
+        options = {f"طلب #{order_id} — {name}": order_id for order_id, name in orders}
+        selected_label = st.selectbox("📌 اختر الطلب", list(options.keys()))
         selected_id = options[selected_label]
 
         cursor.execute(
-            """
-            SELECT
-                total_cost,
-                deposit,
-                payment_status,
-                order_status
-            FROM orders
-            WHERE order_id = ?
-            """,
+            "SELECT total_cost, deposit, payment_status, order_status FROM orders WHERE order_id = ?",
             (selected_id,)
         )
-
         current = cursor.fetchone()
 
         col1, col2 = st.columns(2)
 
         with col1:
-
-            st.markdown(
-                """
-                <div class="panel">
-                    <div class="panel-title">💰 الحساب</div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+            st.markdown('<div class="panel-title" style="font-size:15px;margin-bottom:10px">💰 الحساب</div>', unsafe_allow_html=True)
 
             total_cost = float(current[0] or 0)
 
@@ -1306,48 +1141,20 @@ elif choice == "⚙️  تحديث حالة طلب":
                 "المبلغ المدفوع",
                 min_value=0.0,
                 value=float(current[1] or 0),
-                step=10.0
+                step=25.0,
             )
-
-            remaining = total_cost - new_deposit
 
             if new_deposit > total_cost and total_cost > 0:
-                st.error("❌ المبلغ المدفوع أكبر من قيمة الطلب.")
+                st.markdown('<span class="badge badge-unpaid">⚠ المبلغ المدفوع أكبر من قيمة الطلب</span>', unsafe_allow_html=True)
                 new_payment_status = current[2]
             else:
-                new_payment_status = calculate_payment(
-                    total_cost,
-                    new_deposit
-                )
-
-                if remaining > 0:
-                    st.markdown(
-                        f'<span class="pay-badge pay-partial">المتبقي: {remaining:,.2f} جنيه</span>',
-                        unsafe_allow_html=True
-                    )
-                elif total_cost > 0:
-                    st.markdown(
-                        '<span class="pay-badge pay-full">✅ تم دفع الطلب بالكامل</span>',
-                        unsafe_allow_html=True
-                    )
+                new_payment_status = calculate_payment(total_cost, new_deposit)
+                st.markdown(payment_badge_html(total_cost, new_deposit), unsafe_allow_html=True)
 
         with col2:
+            st.markdown('<div class="panel-title" style="font-size:15px;margin-bottom:10px">📦 التنفيذ</div>', unsafe_allow_html=True)
 
-            st.markdown(
-                """
-                <div class="panel">
-                    <div class="panel-title">📦 التنفيذ</div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-            statuses = [
-                "قيد التنفيذ",
-                "جاهز للتسليم",
-                "تم التسليم"
-            ]
-
+            statuses = ["قيد التنفيذ", "جاهز للتسليم", "تم التسليم"]
             current_status = current[3]
             if current_status not in statuses:
                 current_status = statuses[0]
@@ -1358,44 +1165,27 @@ elif choice == "⚙️  تحديث حالة طلب":
                 index=statuses.index(current_status)
             )
 
-        if st.button(
-            "🔄  حفظ التعديلات",
-            use_container_width=True
-        ):
+        if st.button("🔄  حفظ التعديلات", use_container_width=True):
 
             if new_deposit > total_cost and total_cost > 0:
-                st.error("❌ لا يمكن دفع مبلغ أكبر من قيمة الطلب.")
-
+                st.error("لا يمكن دفع مبلغ أكبر من قيمة الطلب.")
             else:
-
                 cursor.execute(
                     """
                     UPDATE orders
-                    SET
-                        deposit = ?,
-                        payment_status = ?,
-                        order_status = ?
+                    SET deposit = ?, payment_status = ?, order_status = ?
                     WHERE order_id = ?
                     """,
-                    (
-                        new_deposit,
-                        new_payment_status,
-                        new_order_status,
-                        selected_id
-                    )
+                    (new_deposit, new_payment_status, new_order_status, selected_id)
                 )
-
                 conn.commit()
                 conn.close()
 
                 backup_result = backup_after_save()
 
-                st.success("✅ تم تحديث الطلب بنجاح.")
+                st.success("تم تحديث الطلب بنجاح.")
                 if not backup_result["success"]:
-                    st.warning(
-                        "⚠️ التحديث اتحفظ، لكن حصلت مشكلة في المزامنة السحابية: "
-                        + str(backup_result["error"])
-                    )
+                    st.warning("التحديث اتحفظ، لكن حصلت مشكلة في المزامنة السحابية: " + str(backup_result["error"]))
                 st.rerun()
 
     conn.close()
@@ -1410,8 +1200,9 @@ elif choice == "📝  المفكرة اليومية":
 
     st.markdown(
         f"""
-        <div class="panel">
-            <div class="panel-title">📌 ملاحظة يوم {today_iso}</div>
+        <div class="panel-head">
+            <div class="panel-title">ملاحظة يوم {today_iso}</div>
+            <div class="panel-rule"></div>
         </div>
         """,
         unsafe_allow_html=True
@@ -1423,6 +1214,7 @@ elif choice == "📝  المفكرة اليومية":
         "اكتب ملاحظتك هنا",
         value=current_note,
         height=260,
+        label_visibility="collapsed",
         placeholder=(
             "مثال:\n"
             "• أحمد يستلم البانر الساعة 5\n"
@@ -1432,23 +1224,13 @@ elif choice == "📝  المفكرة اليومية":
         )
     )
 
-    if st.button(
-        "💾  حفظ ملاحظة اليوم",
-        use_container_width=True
-    ):
-
+    if st.button("💾  حفظ ملاحظة اليوم", use_container_width=True):
         save_today_note(note.strip())
         backup_result = backup_after_save()
 
-        st.success(
-            f"✅ تم حفظ ملاحظة يوم {today_iso}."
-        )
+        st.success(f"تم حفظ ملاحظة يوم {today_iso}.")
         if not backup_result["success"]:
-            st.warning(
-                "⚠️ الملاحظة اتحفظت، لكن حصلت مشكلة في المزامنة السحابية: "
-                + str(backup_result["error"])
-            )
-
+            st.warning("الملاحظة اتحفظت، لكن حصلت مشكلة في المزامنة السحابية: " + str(backup_result["error"]))
         st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -1456,21 +1238,18 @@ elif choice == "📝  المفكرة اليومية":
     recent = get_recent_notes(10)
 
     if not recent.empty:
-
         st.markdown(
             """
-            <div class="panel">
-                <div class="panel-title">🗓️ الملاحظات السابقة</div>
+            <div class="panel-head">
+                <div class="panel-title">الملاحظات السابقة</div>
+                <div class="panel-rule"></div>
             </div>
             """,
             unsafe_allow_html=True
         )
 
         for _, row in recent.iterrows():
-
-            with st.expander(
-                f"📅 {row['note_date']}"
-            ):
+            with st.expander(f"📅 {row['note_date']}"):
                 st.write(row["note_text"])
 
 # =========================================================
@@ -1480,59 +1259,57 @@ elif choice == "☁️  النسخ الاحتياطي (Google Drive)":
 
     st.markdown(
         """
-        <div class="panel">
-            <div class="panel-title">☁️ حماية البيانات — Google Drive</div>
+        <div class="panel-head">
+            <div class="panel-title">حماية البيانات — Google Drive</div>
+            <div class="panel-rule"></div>
         </div>
         """,
         unsafe_allow_html=True
     )
 
     if not drive_backup_configured():
-        st.error("❌ النسخ الاحتياطي غير مُهيأ.")
-        st.markdown("### ⚙️ الإعداد لأول مرة")
+        st.error("النسخ الاحتياطي غير مُهيأ.")
+        st.markdown("**الإعداد لأول مرة:**")
         st.markdown(
             """
-            1) افتح Google Apps Script وأنشئ مشروعاً جديداً.
-            2) الصق كود google_drive_backup_apps_script.gs.
-            3) Deploy → New deployment → Web app.
-            4) Execute as: **Me** — Who has access: **Anyone**.
-            5) انسخ Web app URL.
-            6) ضعه في Streamlit Secrets مع السر الموجود في Apps Script.
+            1. Google Apps Script → مشروع جديد → الصق كود google_drive_backup_apps_script.gs
+            2. Deploy → New deployment → Web app — Execute as: **Me**, Access: **Anyone**
+            3. انسخ الـ Web app URL والسر، وضعهما في Streamlit Secrets
             """
         )
     else:
-        st.success("✅ Google Drive Backup متصل.")
+        st.success("Google Drive Backup متصل.")
 
         db_file = FilePath(DB_NAME)
         if db_file.exists():
             db_size = db_file.stat().st_size / 1024
-            st.info(f"📦 قاعدة البيانات الحالية: `{DB_NAME}` — الحجم: {db_size:.1f} KB")
+            st.caption(f"قاعدة البيانات الحالية: `{DB_NAME}` — {db_size:.1f} KB")
 
         remote = drive_backup_info()
         if remote and remote.get("found"):
-            st.success("☁️ آخر نسخة: " + str(remote.get("filename","غير معروف")))
+            st.caption("☁️ آخر نسخة: " + str(remote.get("filename", "غير معروف")))
         else:
-            st.info("📭 لا توجد نسخة احتياطية على Google Drive حتى الآن.")
+            st.caption("لا توجد نسخة احتياطية على Google Drive حتى الآن.")
 
         if st.button("☁️ عمل Backup الآن", use_container_width=True):
-            with st.spinner("⏳ جاري رفع النسخة..."):
+            with st.spinner("جاري رفع النسخة..."):
                 result = drive_backup_db()
             if result["success"]:
-                st.success("✅ تم رفع النسخة بنجاح إلى Google Drive.")
+                st.success("تم رفع النسخة بنجاح إلى Google Drive.")
             else:
-                st.error("❌ فشل النسخ الاحتياطي:\n\n" + str(result["error"]))
+                st.error("فشل النسخ الاحتياطي: " + str(result["error"]))
 
         st.markdown("<br>", unsafe_allow_html=True)
-        st.warning("⚠️ الاسترجاع سيستبدل قاعدة البيانات الحالية بآخر Backup موجود على Google Drive.")
+        st.warning("الاسترجاع سيستبدل قاعدة البيانات الحالية بآخر Backup موجود على Google Drive.")
 
         if st.button("🔄 استرجاع آخر Backup", use_container_width=True):
-            with st.spinner("⏳ جاري تنزيل وفحص النسخة..."):
+            with st.spinner("جاري تنزيل وفحص النسخة..."):
                 result = drive_restore_latest()
             if result["success"]:
-                st.success("✅ تم الاسترجاع: " + str(result.get("filename","latest backup")))
+                st.success("تم الاسترجاع: " + str(result.get("filename", "latest backup")))
                 st.rerun()
             else:
-                st.error("❌ فشل الاسترجاع:\n\n" + str(result["error"]))
+                st.error("فشل الاسترجاع: " + str(result["error"]))
 
 # =========================================================
 # FOOTER
@@ -1540,9 +1317,9 @@ elif choice == "☁️  النسخ الاحتياطي (Google Drive)":
 st.markdown(
     """
     <div class="footer">
-        ZERO Advertising Management System
+        نظام إدارة ZERO Advertising
         <br>
-        <strong>PRINT • DESIGN • ADVERTISING</strong>
+        <strong>طباعة وتصميم وإعلان</strong>
     </div>
     """,
     unsafe_allow_html=True
