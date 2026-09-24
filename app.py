@@ -1056,10 +1056,18 @@ set_custom_design()
 # HELPERS
 # =========================================================
 def calculate_payment(total, deposit):
-    if total > 0 and deposit >= total:
+    # لو التكلفة غير محددة، لا نحسب متبقي ولا نعرض رقم سالب/خاطئ.
+    if total <= 0:
+        if deposit > 0:
+            return f"تم تسجيل المدفوع: {deposit:,.2f} ج — التكلفة غير محددة"
+        return "لم يدفع"
+
+    if deposit >= total:
         return "تم الدفع بالكامل"
+
     if deposit > 0:
         return f"تم دفع عربون — المتبقي: {total - deposit:,.2f} ج"
+
     return "لم يدفع"
 
 
@@ -1365,7 +1373,7 @@ if choice == "➕  تسجيل طلب جديد":
             )
 
             st.markdown(
-                '<div class="cost-hint">اترك الخانة فارغة لو لا توجد تكلفة محددة.</div>',
+                '<div class="cost-hint">اترك الخانة فارغة لو لا توجد تكلفة محددة. لن يظهر أي متبقي بدون تكلفة.</div>',
                 unsafe_allow_html=True,
             )
 
@@ -1552,8 +1560,38 @@ elif choice == "📋  عرض واستعلام الطلبات":
         if status_filter != "الكل":
             df = df[df["حالة الطلب"] == status_filter]
 
+        # أضف المتبقي كعمود مستقل، لكن لو التكلفة غير محددة
+        # اترك المتبقي فارغًا بدل عرض قيمة سالبة مثل -1000.
+        df["المتبقي"] = (
+            df["الإجمالي"].fillna(0) - df["العربون"].fillna(0)
+        )
+        df.loc[df["الإجمالي"].fillna(0) <= 0, "المتبقي"] = pd.NA
+
+        def remaining_cell_style(value):
+            if pd.isna(value):
+                return ""
+            if value > 0:
+                return (
+                    "background-color: rgba(245, 158, 11, .20); "
+                    "color: #fbbf24; font-weight: 900;"
+                )
+            if value == 0:
+                return (
+                    "background-color: rgba(34, 197, 94, .18); "
+                    "color: #86efac; font-weight: 900;"
+                )
+            return (
+                "background-color: rgba(239, 68, 68, .18); "
+                "color: #fca5a5; font-weight: 900;"
+            )
+
+        styled_df = df.style.apply(
+            lambda col: [remaining_cell_style(v) for v in col],
+            subset=["المتبقي"]
+        )
+
         st.dataframe(
-            df,
+            styled_df,
             use_container_width=True,
             hide_index=True,
             height=520,
@@ -1562,6 +1600,9 @@ elif choice == "📋  عرض واستعلام الطلبات":
                     format="%.2f ج"
                 ),
                 "العربون": st.column_config.NumberColumn(
+                    format="%.2f ج"
+                ),
+                "المتبقي": st.column_config.NumberColumn(
                     format="%.2f ج"
                 ),
             }
