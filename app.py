@@ -330,39 +330,23 @@ def set_custom_design():
         f"""
 <style>
 
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@500;700;800;900&family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap');
-
 /* =========================================================
-   TOKENS
+   CORE — original palette restored, box SHAPES redesigned
+   (chamfered / ticket-stub cuts instead of plain rounded
+   rectangles, punch-hole perforation on the stats strip,
+   folded-corner "stamp" tab on section panels)
    ========================================================= */
-:root {{
-    --paper: #F6F3EC;
-    --panel: #FFFFFF;
-    --ink: #201C17;
-    --ink-soft: #6B6255;
-    --hairline: #E4DDCE;
-    --stamp: #A8142B;
-    --stamp-soft: rgba(168,20,43,.09);
-    --gold: #9C7A2E;
-    --good: #1F6E44;
-    --good-soft: rgba(31,110,68,.10);
-    --warn: #9C6B0B;
-    --warn-soft: rgba(156,107,11,.12);
-    --bad: #A8142B;
-    --bad-soft: rgba(168,20,43,.09);
-}}
 
 html, body, [class*="css"] {{
     direction: rtl;
-    font-family: 'IBM Plex Sans Arabic', 'Cairo', sans-serif;
 }}
 
 .stApp {{
-    background: var(--paper);
-    color: var(--ink);
-    background-image:
-        linear-gradient(var(--paper), var(--paper)),
-        repeating-linear-gradient(0deg, rgba(32,28,23,.018) 0px, rgba(32,28,23,.018) 1px, transparent 1px, transparent 34px);
+    background:
+        radial-gradient(circle at 15% 15%, rgba(226,27,43,.10), transparent 28%),
+        radial-gradient(circle at 85% 80%, rgba(55,75,110,.12), transparent 32%),
+        linear-gradient(135deg, #060a12 0%, #0a111d 48%, #060a12 100%);
+    color: #eef2f7;
 }}
 
 {background_css}
@@ -370,17 +354,21 @@ html, body, [class*="css"] {{
 .main .block-container {{
     position: relative;
     z-index: 1;
-    max-width: 1480px;
-    padding-top: 1rem;
+    max-width: 1550px;
+    padding-top: 1.2rem;
     padding-bottom: 2.5rem;
 }}
 
 #MainMenu, footer {{ visibility: hidden; }}
 header {{ background: transparent !important; }}
 
-h1, h2, h3, h4, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {{
-    font-family: 'Cairo', sans-serif;
-    color: var(--ink);
+
+/* =========================================================
+   ANIMATIONS
+   ========================================================= */
+@keyframes pulseRed {{
+    0%, 100% {{ box-shadow: 0 0 0 0 rgba(226,27,43,.20); }}
+    50% {{ box-shadow: 0 0 0 8px rgba(226,27,43,0); }}
 }}
 
 
@@ -388,87 +376,67 @@ h1, h2, h3, h4, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {{
    SIDEBAR
    ========================================================= */
 section[data-testid="stSidebar"] {{
-    background: var(--panel) !important;
-    border-left: 1px solid var(--hairline);
+    background: linear-gradient(180deg, #070c15 0%, #0a101b 55%, #060a12 100%) !important;
+    border-left: 1px solid rgba(226,27,43,.65);
+    box-shadow: -15px 0 45px rgba(0,0,0,.35);
+    overflow: hidden !important;
 }}
 
-section[data-testid="stSidebar"] > div {{
-    padding: 1.1rem .9rem 1.5rem;
-}}
-
-section[data-testid="stSidebar"] * {{
-    color: var(--ink) !important;
-}}
+section[data-testid="stSidebar"] > div {{ padding: 1rem .85rem 1.5rem; }}
+section[data-testid="stSidebar"] * {{ color: #f1f5f9 !important; }}
 
 .brand-box {{
     padding: 6px 4px 18px;
-    border-bottom: 1px solid var(--hairline);
     margin-bottom: 14px;
     display: flex;
     align-items: center;
     gap: 12px;
+    border-bottom: 1px dashed rgba(148,163,184,.25);
 }}
 
 .brand-logo {{
-    width: 52px;
-    height: 52px;
+    width: 54px;
+    height: 54px;
     object-fit: cover;
-    border-radius: 8px;
-    border: 1px solid var(--hairline);
+    border: 1px solid rgba(255,255,255,.13);
+    box-shadow: 0 12px 30px rgba(0,0,0,.45);
+    clip-path: polygon(14% 0, 100% 0, 100% 86%, 86% 100%, 0 100%, 0 14%);
     flex-shrink: 0;
 }}
 
 .brand-mark {{
-    width: 52px;
-    height: 52px;
-    border-radius: 8px;
-    border: 2px solid var(--stamp);
-    color: var(--stamp);
-    font-family: 'Cairo', sans-serif;
-    font-weight: 900;
+    width: 54px;
+    height: 54px;
+    border: 2px solid #e21b2b;
+    color: #e21b2b;
+    font-weight: 800;
     font-size: 20px;
     display: flex;
     align-items: center;
     justify-content: center;
+    clip-path: polygon(14% 0, 100% 0, 100% 86%, 86% 100%, 0 100%, 0 14%);
     flex-shrink: 0;
 }}
 
-.brand-name {{
-    font-family: 'Cairo', sans-serif;
-    font-size: 17px;
-    font-weight: 800;
-    line-height: 1.3;
-}}
+.brand-name {{ font-size: 19px; font-weight: 800; line-height: 1.3; }}
+.brand-caption {{ color: #7f8da3 !important; font-size: 11px; margin-top: 2px; }}
 
-.brand-caption {{
-    color: var(--ink-soft) !important;
-    font-size: 11px;
-    margin-top: 1px;
-}}
+.side-label {{ color: #69778b !important; font-size: 10px; margin: 13px 3px 7px; letter-spacing: .4px; }}
 
-.side-label {{
-    color: var(--ink-soft) !important;
-    font-size: 11px;
-    font-weight: 600;
-    margin: 4px 3px 8px;
-}}
-
-/* Radio-based nav styled as a menu list */
-section[data-testid="stSidebar"] div[role="radiogroup"] {{
-    gap: 3px;
-}}
+/* Radio-based nav styled as angled ticket-stub tabs */
+section[data-testid="stSidebar"] div[role="radiogroup"] {{ gap: 4px; }}
 section[data-testid="stSidebar"] div[role="radiogroup"] label {{
-    padding: 10px 12px !important;
-    border-radius: 8px;
+    padding: 11px 14px !important;
     border: 1px solid transparent;
-    transition: background .12s ease, border-color .12s ease;
+    border-right: 3px solid transparent;
+    transition: background .15s ease, border-color .15s ease;
 }}
 section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {{
-    background: var(--stamp-soft);
+    background: rgba(226,27,43,.08);
 }}
 section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {{
-    background: var(--stamp-soft);
-    border-color: rgba(168,20,43,.25);
+    background: rgba(226,27,43,.12);
+    border-right-color: #e21b2b;
 }}
 section[data-testid="stSidebar"] div[role="radiogroup"] label p {{
     font-size: 13.5px !important;
@@ -476,127 +444,141 @@ section[data-testid="stSidebar"] div[role="radiogroup"] label p {{
 }}
 
 .side-note {{
-    background: var(--paper);
-    border: 1px solid var(--hairline);
-    border-radius: 10px;
-    padding: 12px 13px;
-    margin-top: 16px;
+    background: linear-gradient(145deg, rgba(20,30,48,.94), rgba(9,15,26,.94));
+    border: 1px solid rgba(148,163,184,.13);
+    padding: 13px;
+    margin-top: 12px;
+    position: relative;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 16px 100%, 0 calc(100% - 16px));
 }}
-.side-note-title {{
-    font-weight: 700;
-    font-size: 12.5px;
-    color: var(--ink) !important;
-}}
-.side-note-date {{
-    font-size: 10.5px;
-    color: var(--ink-soft) !important;
-    margin-top: 2px;
-}}
-.side-note-text {{
-    margin-top: 7px;
-    font-size: 11.5px;
-    line-height: 1.75;
-    color: #4A4438 !important;
-    white-space: pre-wrap;
-}}
+.side-note-title {{ font-weight: 800; font-size: 13px; color: #f8fafc !important; }}
+.side-note-date {{ font-size: 10px; color: #7f8da3 !important; margin-top: 3px; }}
+.side-note-text {{ margin-top: 8px; font-size: 11px; line-height: 1.8; color: #b9c3d1 !important; white-space: pre-wrap; }}
 
 
 /* =========================================================
-   TOP BAR
+   TOP BAR — clipped corner + pulsing spine, like a stamped
+   docket header instead of a plain rounded banner
    ========================================================= */
 .topbar {{
+    background: linear-gradient(110deg, rgba(18,28,45,.92), rgba(8,14,25,.82));
+    border: 1px solid rgba(148,163,184,.14);
+    padding: 20px 26px;
+    margin-bottom: 20px;
+    position: relative;
+    overflow: hidden;
     display: flex;
     justify-content: space-between;
     align-items: flex-end;
-    padding-bottom: 14px;
-    margin-bottom: 18px;
-    border-bottom: 2px solid var(--ink);
+    direction: ltr;
+    clip-path: polygon(30px 0, 100% 0, 100% 100%, 0 100%, 0 30px);
 }}
-.topbar-title {{
-    font-family: 'Cairo', sans-serif;
-    font-size: 26px;
-    font-weight: 800;
-    color: var(--ink);
-    letter-spacing: .2px;
+.topbar::after {{
+    content: "";
+    position: absolute;
+    top: 0; right: 0;
+    width: 4px;
+    height: 100%;
+    background: linear-gradient(#ff2639, #a90e1e);
+    animation: pulseRed 2.2s infinite;
 }}
-.topbar-date {{
-    font-family: 'Cairo', sans-serif;
-    font-size: 13px;
-    color: var(--ink-soft);
-    font-weight: 600;
-}}
+.topbar-title {{ font-size: 28px; font-weight: 800; color: #ffffff; line-height: 1.35; }}
+.topbar-date {{ color: #8492a6; font-size: 12px; font-weight: 600; }}
 
 
 /* =========================================================
-   LEDGER STATS STRIP
+   LEDGER STATS STRIP — perforated ticket-book divider
+   (punch-hole circles instead of a row of separate shadow
+   cards)
    ========================================================= */
 .ledger {{
     display: flex;
-    border: 1px solid var(--hairline);
-    border-radius: 12px;
-    background: var(--panel);
-    overflow: hidden;
+    background: linear-gradient(145deg, rgba(20,31,50,.94), rgba(9,15,26,.92));
+    border: 1px solid rgba(148,163,184,.12);
     margin-bottom: 22px;
+    position: relative;
 }}
 .ledger-cell {{
     flex: 1;
-    padding: 16px 20px;
-    border-left: 1px solid var(--hairline);
+    padding: 18px 20px;
+    position: relative;
 }}
-.ledger-cell:last-child {{ border-left: none; }}
-.ledger-value {{
-    font-family: 'Cairo', sans-serif;
-    font-size: 26px;
-    font-weight: 800;
-    color: var(--ink);
+.ledger-cell:not(:last-child) {{ border-left: 1px dashed rgba(148,163,184,.30); }}
+.ledger-cell:not(:last-child)::before {{
+    content: "";
+    position: absolute;
+    left: -6px; top: -7px;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: #0a111d;
+    border: 1px solid rgba(148,163,184,.28);
 }}
-.ledger-label {{
-    font-size: 11.5px;
-    color: var(--ink-soft);
-    margin-top: 3px;
+.ledger-cell:not(:last-child)::after {{
+    content: "";
+    position: absolute;
+    left: -6px; bottom: -7px;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: #0a111d;
+    border: 1px solid rgba(148,163,184,.28);
 }}
+.ledger-value {{ color: #f8fafc; font-size: 25px; font-weight: 800; }}
+.ledger-label {{ color: #78869a; font-size: 11px; margin-top: 3px; }}
 
 
 /* =========================================================
-   PANELS
+   PANELS — folded-corner "stamp tab" section headers
    ========================================================= */
 .panel-head {{
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-bottom: 14px;
+    gap: 14px;
+    background: linear-gradient(145deg, rgba(17,28,46,.90), rgba(7,13,24,.86));
+    border: 1px solid rgba(148,163,184,.13);
+    padding: 15px 22px;
+    margin-bottom: 18px;
+    box-shadow: 0 14px 40px rgba(0,0,0,.20);
+    position: relative;
+    clip-path: polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 0 100%);
 }}
-.panel-title {{
-    font-family: 'Cairo', sans-serif;
-    font-size: 18px;
-    font-weight: 800;
-    color: var(--ink);
+.panel-head::before {{
+    content: "";
+    position: absolute;
+    top: 0; right: 0;
+    width: 0; height: 0;
+    border-style: solid;
+    border-width: 0 24px 24px 0;
+    border-color: transparent #e21b2b transparent transparent;
+    opacity: .85;
 }}
+.panel-title {{ font-size: 19px; font-weight: 800; color: #f8fafc; }}
 .panel-rule {{
     flex: 1;
     height: 1px;
-    background: var(--hairline);
+    background: repeating-linear-gradient(90deg, rgba(148,163,184,.35) 0 6px, transparent 6px 13px);
 }}
+.mini-title {{ color: #d8dee8; font-size: 14px; font-weight: 800; margin-bottom: 9px; }}
 
 
 /* =========================================================
-   PAYMENT BADGES
+   PAYMENT BADGES — chamfered ticket-stub corners, high
+   contrast for the outstanding balance
    ========================================================= */
 .badge {{
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 10px 16px;
-    border-radius: 8px;
+    padding: 10px 18px;
     font-weight: 700;
     font-size: 14px;
     line-height: 1.4;
+    clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
 }}
-.badge-unpaid {{ background: var(--bad-soft); color: var(--bad); border: 1px solid rgba(168,20,43,.30); }}
-.badge-partial {{ background: var(--warn-soft); color: var(--warn); border: 1px solid rgba(156,107,11,.30); }}
-.badge-paid {{ background: var(--good-soft); color: var(--good); border: 1px solid rgba(31,110,68,.30); }}
-.badge-neutral {{ background: #F1EDE2; color: var(--ink-soft); border: 1px solid var(--hairline); }}
-.badge strong {{ font-family: 'Cairo', sans-serif; }}
+.badge-unpaid {{ background: rgba(239,68,68,.14); color: #f87171; border: 1px solid rgba(239,68,68,.35); }}
+.badge-partial {{ background: rgba(245,158,11,.14); color: #fbbf24; border: 1px solid rgba(245,158,11,.35); }}
+.badge-paid {{ background: rgba(34,197,94,.14); color: #4ade80; border: 1px solid rgba(34,197,94,.35); }}
+.badge-neutral {{ background: rgba(148,163,184,.10); color: #9aa7ba; border: 1px solid rgba(148,163,184,.20); }}
+.badge strong {{ font-size: 15px; }}
 
 
 /* =========================================================
@@ -605,44 +587,38 @@ section[data-testid="stSidebar"] div[role="radiogroup"] label p {{
 div[data-baseweb="input"] > div,
 div[data-baseweb="textarea"] > div,
 div[data-baseweb="select"] > div {{
-    background: var(--panel) !important;
-    border: 1px solid var(--hairline) !important;
-    border-radius: 8px !important;
-    transition: border-color .15s ease, box-shadow .15s ease;
+    background: #0d1728 !important;
+    border: 1px solid #26364f !important;
+    border-radius: 10px !important;
+    transition: border-color .2s ease, box-shadow .2s ease;
 }}
 div[data-baseweb="input"] > div:focus-within,
 div[data-baseweb="textarea"] > div:focus-within,
 div[data-baseweb="select"] > div:focus-within {{
-    border-color: var(--stamp) !important;
-    box-shadow: 0 0 0 3px rgba(168,20,43,.08);
+    border-color: rgba(226,27,43,.65) !important;
+    box-shadow: 0 0 0 3px rgba(226,27,43,.08);
 }}
-input, textarea {{ color: var(--ink) !important; }}
-input::placeholder, textarea::placeholder {{ color: #A69C89 !important; }}
-label, .stNumberInput label, .stTextInput label, .stTextArea label, .stSelectbox label {{
-    color: #4A4438 !important;
-    font-size: 12.5px !important;
-    font-weight: 600 !important;
-}}
+input, textarea {{ color: #f8fafc !important; }}
+input::placeholder, textarea::placeholder {{ color: #536176 !important; }}
+label {{ color: #cbd5e1 !important; font-size: 12px !important; font-weight: 600 !important; }}
 
 
 /* =========================================================
-   BUTTONS
+   BUTTONS — chamfered corners, ticket-stub silhouette
    ========================================================= */
 .stButton > button, .stFormSubmitButton > button {{
-    border: 1px solid var(--stamp) !important;
-    border-radius: 8px !important;
+    border: 0 !important;
     min-height: 44px;
-    background: var(--stamp) !important;
-    color: #FBF8F2 !important;
-    font-weight: 700 !important;
-    font-family: 'Cairo', sans-serif;
-    transition: filter .15s ease, transform .1s ease;
+    background: linear-gradient(135deg, #f21f33, #bc1021) !important;
+    color: #fff !important;
+    font-weight: 800 !important;
+    transition: transform .2s ease, box-shadow .2s ease, filter .2s ease;
+    clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
 }}
 .stButton > button:hover, .stFormSubmitButton > button:hover {{
+    transform: translateY(-2px);
     filter: brightness(1.08);
-}}
-.stButton > button:active, .stFormSubmitButton > button:active {{
-    transform: translateY(1px);
+    box-shadow: 0 12px 28px rgba(226,27,43,.28);
 }}
 
 
@@ -650,13 +626,13 @@ label, .stNumberInput label, .stTextInput label, .stTextArea label, .stSelectbox
    DATAFRAME
    ========================================================= */
 [data-testid="stDataFrame"] {{
-    border: 1px solid var(--hairline);
-    border-radius: 10px;
+    border: 1px solid rgba(148,163,184,.15);
+    border-radius: 14px;
     overflow: hidden;
 }}
 
-div[data-testid="stAlert"] {{ border-radius: 8px; }}
-hr {{ border-color: var(--hairline) !important; }}
+div[data-testid="stAlert"] {{ border-radius: 11px; }}
+hr {{ border-color: rgba(148,163,184,.10) !important; }}
 
 
 /* =========================================================
@@ -664,22 +640,19 @@ hr {{ border-color: var(--hairline) !important; }}
    ========================================================= */
 .footer {{
     text-align: center;
-    color: var(--ink-soft);
-    font-size: 10.5px;
-    padding: 26px 0 4px;
-    border-top: 1px solid var(--hairline);
-    margin-top: 10px;
-    padding-top: 14px;
+    color: #465267;
+    font-size: 10px;
+    padding: 24px 0 4px;
 }}
-.footer strong {{ color: var(--stamp); }}
+.footer strong {{ color: #e21b2b; }}
 
 
 /* =========================================================
-   MOBILE
+   MOBILE FIXES
    ========================================================= */
 @media (max-width: 768px) {{
     .topbar-title {{ font-size: 20px; }}
-    .panel-title {{ font-size: 16px; }}
+    .panel-title {{ font-size: 17px; }}
     div[data-testid="stHorizontalBlock"] {{
         flex-wrap: wrap !important;
         gap: 0.6rem;
@@ -690,8 +663,8 @@ hr {{ border-color: var(--hairline) !important; }}
         width: 100% !important;
     }}
     .ledger {{ flex-wrap: wrap; }}
-    .ledger-cell {{ flex: 1 1 50%; border-bottom: 1px solid var(--hairline); }}
-    .ledger-value {{ font-size: 21px; }}
+    .ledger-cell {{ flex: 1 1 50%; }}
+    .ledger-value {{ font-size: 22px; }}
     section[data-testid="stSidebar"][aria-expanded="false"] {{ visibility: hidden; }}
 }}
 
