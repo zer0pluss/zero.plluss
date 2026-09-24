@@ -84,7 +84,7 @@ def init_db():
 
 
 # =========================================================
-# CLOUD SYNC — ONE Google Drive FILE (Google Spreadsheet)
+# CLOUD SYNC — ONE Google Drive FILE (Excel file (.xlsx))
 # ---------------------------------------------------------
 # The cloud backup is ONE spreadsheet named:
 #     ZERO_DATABASE_BACKUP
@@ -109,7 +109,7 @@ import shutil
 import requests
 
 DB_NAME = "print_shop.db"
-CLOUD_FILE_NAME = "ZERO_DATABASE_BACKUP"
+CLOUD_FILE_NAME = "ZERO_Advertising_Orders.xlsx"
 
 # Tables that are real SQLite tables. We also create a readable
 # "orders_details" view in the cloud spreadsheet; it is NOT a DB table.
@@ -135,12 +135,25 @@ def drive_backup_configured():
 
 
 def _json_response(response):
+    """Parse Apps Script JSON and give a useful error when Google returns HTML."""
     try:
         return response.json()
     except Exception:
+        text = (response.text or "").strip()
+        lower = text.lower()
+        if "<html" in lower or "<!doctype" in lower:
+            return {
+                "success": False,
+                "error": (
+                    "Google رجّع صفحة HTML بدل JSON. تأكد أن DRIVE_BACKUP_URL "
+                    "هو رابط Web App المنتهي بـ /exec، وليس رابط /edit أو رابط المشروع. "
+                    "وتأكد أن النشر مضبوط Execute as: Me و Who has access: Anyone. "
+                    f"HTTP {response.status_code}"
+                ),
+            }
         return {
             "success": False,
-            "error": response.text[:1000] or f"HTTP {response.status_code}",
+            "error": text[:1000] or f"HTTP {response.status_code}",
         }
 
 
@@ -265,7 +278,7 @@ def _build_cloud_payload():
 
 def drive_backup_db():
     """
-    Sync the COMPLETE local SQLite database to ONE Google Spreadsheet.
+    Sync the COMPLETE local SQLite database to ONE Excel file (.xlsx).
     The Apps Script updates the same Drive file every time.
     Includes automatic retry for short-lived network failures.
     """
@@ -481,11 +494,37 @@ def drive_restore_latest():
             )
             return result
 
-        cloud_data = payload.get("database")
-        if not cloud_data:
+        # ملف السحابة الآن XLSX حقيقي. نقرأ الشيت المخفي __backup_json
+        # الذي يحتوي على نسخة قاعدة البيانات الكاملة.
+        encoded = payload.get("base64")
+        if not encoded:
             raise ValueError(
-                "لم يتم العثور على بيانات قاعدة البيانات في النسخة السحابية."
+                "لم يتم العثور على ملف Excel في النسخة السحابية."
             )
+
+        xlsx_bytes = base64.b64decode(encoded)
+        try:
+            json_df = pd.read_excel(
+                io.BytesIO(xlsx_bytes),
+                sheet_name="__backup_json",
+                header=None,
+                engine="openpyxl",
+            )
+        except Exception as exc:
+            raise ValueError(
+                "تعذر قراءة ملف Excel للاسترجاع. تأكد أن openpyxl مثبتة. "
+                f"التفاصيل: {exc}"
+            )
+
+        if json_df.empty or json_df.shape[0] < 2:
+            raise ValueError("ملف Excel لا يحتوي على نسخة قاعدة البيانات.")
+
+        json_text = "".join(
+            str(value)
+            for value in json_df.iloc[1:, 0].tolist()
+            if pd.notna(value)
+        )
+        cloud_data = json.loads(json_text)
 
         temp_path = FilePath(DB_NAME + ".restore_tmp")
         _rebuild_db_from_cloud_payload(cloud_data, temp_path)
@@ -522,7 +561,7 @@ def drive_restore_latest():
 
 
 def drive_backup_info():
-    """Get status and direct Google Sheets URL."""
+    """Get status and direct Google Drive Excel URL."""
     if not drive_backup_configured():
         return None
 
@@ -1922,7 +1961,7 @@ elif choice == "☁️  المزامنة السحابية (ملف واحد)":
         <div class="panel">
             <div class="panel-title">☁️ المزامنة السحابية — ملف واحد فقط</div>
             <div class="panel-sub">
-                كل البيانات تتزامن تلقائياً إلى <strong>ملف Google Sheets واحد</strong>
+                كل البيانات تتزامن تلقائياً إلى <strong>ملف Excel واحد (.xlsx)</strong>
                 داخل Google Drive. كل طلب جديد أو تعديل يظهر في نفس الملف فور نجاح المزامنة،
                 بدون إنشاء ملف جديد لكل طلب.
             </div>
@@ -1949,7 +1988,7 @@ elif choice == "☁️  المزامنة السحابية (ملف واحد)":
 1) افتح Google Apps Script وأنشئ مشروعاً جديداً.
 
 2) الصق كود:
-`google_drive_backup_apps_script_single.gs`
+`google_drive_backup_excel_single.gs`
 
 3) من Deploy اختر:
 **New deployment → Web app**
@@ -1968,7 +2007,7 @@ DRIVE_BACKUP_URL = "ضع_رابط_Web_App_هنا"
 DRIVE_BACKUP_TOKEN = "ضع_نفس_التوكن_الموجود_في_Apps_Script"
 ```
 
-لا تحتاج Service Account ولا Google Cloud Project ولا Google Sheets API.
+تحتاج فقط لتفعيل Advanced Google Service: Drive API في Apps Script لأننا نكتب ملف XLSX حقيقي.
             """
         )
 
@@ -2016,7 +2055,7 @@ DRIVE_BACKUP_TOKEN = "ضع_نفس_التوكن_الموجود_في_Apps_Script"
         ):
 
             with st.spinner(
-                "⏳ جاري تحديث نفس ملف Google Drive..."
+                "⏳ جاري تحديث نفس ملف Excel في Google Drive..."
             ):
 
                 result = drive_backup_db()
@@ -2061,7 +2100,7 @@ DRIVE_BACKUP_TOKEN = "ضع_نفس_التوكن_الموجود_في_Apps_Script"
         )
 
         st.warning(
-            "⚠️ زر الاسترجاع يستبدل قاعدة البيانات المحلية بآخر نسخة موجودة في ملف Google Drive."
+            "⚠️ زر الاسترجاع يستبدل قاعدة البيانات المحلية بآخر نسخة موجودة في ملف Excel في Google Drive."
         )
 
         if st.button(
