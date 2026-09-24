@@ -85,12 +85,15 @@ def init_db():
 
 # =========================================================
 # CLOUD BACKUP (Google Drive via Google Apps Script)
+# One readable Excel file containing the COMPLETE database.
 # =========================================================
-import gzip
-import shutil
+import io
 import requests
+import shutil
 
 DB_NAME = "print_shop.db"
+EXCEL_BACKUP_FILENAME = "ZERO_DATABASE_BACKUP.xlsx"
+
 
 def get_secret(key):
     try:
@@ -101,11 +104,14 @@ def get_secret(key):
         pass
     return os.environ.get(key, "")
 
+
 DRIVE_BACKUP_URL = get_secret("DRIVE_BACKUP_URL").strip()
 DRIVE_BACKUP_TOKEN = get_secret("DRIVE_BACKUP_TOKEN").strip()
 
+
 def drive_backup_configured():
     return bool(DRIVE_BACKUP_URL and DRIVE_BACKUP_TOKEN)
+
 
 def _json_response(response):
     try:
@@ -113,7 +119,86 @@ def _json_response(response):
     except Exception:
         return {"success": False, "error": response.text[:500]}
 
+
+def _db_to_excel_bytes():
+    """Export the COMPLETE SQLite database to one readable Excel workbook."""
+    output = io.BytesIO()
+    conn = sqlite3.connect(DB_NAME, timeout=30)
+    try:
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+            for table in ("customers", "orders", "daily_notes"):
+                df = pd.read_sql_query(f"SELECT * FROM {table}", conn)
+                # Excel sheet names are limited to 31 chars; these are all safe.
+                df.to_excel(writer, sheet_name=table, index=False)
+    finally:
+        conn.close()
+    return output.getvalue()
+
+
+def _excel_bytes_to_db(excel_bytes, target_path):
+    """Rebuild a valid SQLite database from the single Excel backup."""
+    xls = pd.ExcelFile(io.BytesIO(excel_bytes), engine="openpyxl")
+    required = {"customers", "orders", "daily_notes"}
+    if not required.issubset(set(xls.sheet_names)):
+        raise ValueError("ملف Excel لا يحتوي على جداول قاعدة البيانات المطلوبة.")
+
+    # Build a fresh database using the same schema, then insert the rows.
+    if FilePath(target_path).exists():
+        FilePath(target_path).unlink()
+
+    conn = sqlite3.connect(target_path, timeout=30)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE customers (
+                customer_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                phone TEXT
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE orders (
+                order_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                customer_id INTEGER,
+                order_details TEXT NOT NULL,
+                order_date DATE DEFAULT CURRENT_DATE,
+                total_cost REAL DEFAULT 0,
+                deposit REAL DEFAULT 0,
+                payment_status TEXT,
+                order_status TEXT,
+                FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE daily_notes (
+                note_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                note_date DATE NOT NULL UNIQUE,
+                note_text TEXT DEFAULT '',
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        for table in ("customers", "orders", "daily_notes"):
+            df = pd.read_excel(xls, sheet_name=table, engine="openpyxl")
+            # Convert NaN to None so SQLite stores SQL NULLs cleanly.
+            df = df.where(pd.notna(df), None)
+            if not df.empty:
+                columns = list(df.columns)
+                placeholders = ",".join(["?"] * len(columns))
+                sql = f"INSERT INTO {table} ({','.join(columns)}) VALUES ({placeholders})"
+                rows = [tuple(row) for row in df.itertuples(index=False, name=None)]
+                cursor.executemany(sql, rows)
+
+        conn.commit()
+        integrity = conn.execute("PRAGMA integrity_check").fetchone()[0]
+        if integrity != "ok":
+            raise ValueError("فشل فحص سلامة قاعدة البيانات بعد الاسترجاع.")
+    finally:
+        conn.close()
+
+
 def drive_backup_db():
+    """Upload ONE Excel file; every save replaces the same Drive file."""
     result = {"success": False, "error": None}
     if not drive_backup_configured():
         result["error"] = "النسخ الاحتياطي غير مُهيأ."
@@ -123,27 +208,31 @@ def drive_backup_db():
         result["error"] = "ملف قاعدة البيانات غير موجود."
         return result
     try:
-        raw = db_file.read_bytes()
-        compressed = gzip.compress(raw, compresslevel=9)
-        encoded = base64.b64encode(compressed).decode("ascii")
-        filename = "ZERO_DATABASE_BACKUP.db.gz"
+        excel_bytes = _db_to_excel_bytes()
+        encoded = base64.b64encode(excel_bytes).decode("ascii")
         response = requests.post(
             DRIVE_BACKUP_URL,
-            data={"action":"backup","token":DRIVE_BACKUP_TOKEN,
-                  "filename":filename,"data":encoded},
+            data={
+                "action": "backup",
+                "token": DRIVE_BACKUP_TOKEN,
+                "filename": EXCEL_BACKUP_FILENAME,
+                "data": encoded,
+            },
             timeout=90,
         )
         payload = _json_response(response)
         if response.ok and payload.get("success"):
             result["success"] = True
-            result["filename"] = filename
+            result["filename"] = EXCEL_BACKUP_FILENAME
         else:
             result["error"] = payload.get("error") or f"HTTP {response.status_code}"
     except Exception as exc:
         result["error"] = str(exc)
     return result
 
+
 def drive_restore_latest():
+    """Download the ONE Excel backup from Drive and rebuild SQLite."""
     result = {"success": False, "error": None}
     if not drive_backup_configured():
         result["error"] = "النسخ الاحتياطي غير مُهيأ."
@@ -151,23 +240,18 @@ def drive_restore_latest():
     try:
         response = requests.get(
             DRIVE_BACKUP_URL,
-            params={"action":"download","token":DRIVE_BACKUP_TOKEN,"latest":"1"},
+            params={"action": "download", "token": DRIVE_BACKUP_TOKEN, "latest": "1"},
             timeout=90,
         )
         payload = _json_response(response)
         if not response.ok or not payload.get("success"):
             result["error"] = payload.get("error") or f"HTTP {response.status_code}"
             return result
-        raw = gzip.decompress(base64.b64decode(payload.get("data","")))
+
+        excel_bytes = base64.b64decode(payload.get("data", ""))
         temp_path = FilePath(DB_NAME + ".restore_tmp")
-        temp_path.write_bytes(raw)
-        test_conn = sqlite3.connect(str(temp_path), timeout=30)
-        integrity = test_conn.execute("PRAGMA integrity_check").fetchone()[0]
-        test_conn.close()
-        if integrity != "ok":
-            temp_path.unlink(missing_ok=True)
-            result["error"] = "النسخة الاحتياطية تالفة أو ليست SQLite سليمة."
-            return result
+        _excel_bytes_to_db(excel_bytes, temp_path)
+
         db_file = FilePath(DB_NAME)
         if db_file.exists():
             shutil.copy2(
@@ -176,10 +260,15 @@ def drive_restore_latest():
             )
         shutil.move(str(temp_path), DB_NAME)
         result["success"] = True
-        result["filename"] = payload.get("filename","latest backup")
+        result["filename"] = payload.get("filename", EXCEL_BACKUP_FILENAME)
     except Exception as exc:
+        try:
+            FilePath(DB_NAME + ".restore_tmp").unlink(missing_ok=True)
+        except Exception:
+            pass
         result["error"] = str(exc)
     return result
+
 
 def drive_backup_info():
     if not drive_backup_configured():
@@ -187,7 +276,7 @@ def drive_backup_info():
     try:
         response = requests.get(
             DRIVE_BACKUP_URL,
-            params={"action":"status","token":DRIVE_BACKUP_TOKEN},
+            params={"action": "status", "token": DRIVE_BACKUP_TOKEN},
             timeout=30,
         )
         payload = _json_response(response)
@@ -197,11 +286,14 @@ def drive_backup_info():
         pass
     return None
 
+
 def backup_after_save():
     return drive_backup_db()
 
+
 def restore_from_cloud():
     return drive_restore_latest()
+
 
 if not FilePath(DB_NAME).exists():
     info = drive_backup_info()
