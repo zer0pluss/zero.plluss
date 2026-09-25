@@ -2134,6 +2134,7 @@ elif choice == "📋  الطلبات":
                             <th>التاريخ</th>
                         </tr>
                     </thead>
+                    <tbody> {rows_html} </tbody>
                 </table>
             </div>
             """,
