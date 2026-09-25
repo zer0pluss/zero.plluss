@@ -2137,7 +2137,7 @@ elif choice == "📋  الطلبات":
                     <tbody>
                         {rows_html}
                     </tbody>
-                    </table>
+                </table>
             </div>
             """,
             unsafe_allow_html=True
