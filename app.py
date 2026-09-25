@@ -1,49 +1,58 @@
 import base64
+import io
 import os
+import shutil
+import sqlite3
 from pathlib import Path as FilePath
 from datetime import date, datetime
-import sqlite3
 
 import pandas as pd
+import requests
 import streamlit as st
 
+
 # =========================================================
-# PAGE CONFIG
+# PAGE
 # =========================================================
+
 st.set_page_config(
-    page_title="ZERO Advertising | Management System",
+    page_title="ZERO Advertising",
+    page_icon="zero.jpg",
     layout="wide",
-    initial_sidebar_state="collapsed",  # مهم جداً للموبايل
+    initial_sidebar_state="collapsed",
 )
+
 
 # =========================================================
 # FILES
-# Put zero.jpg beside this Python file
 # =========================================================
+
 LOGO_PATH = "zero.jpg"
+DB_NAME = "print_shop.db"
+EXCEL_BACKUP_FILENAME = "ZERO_DATABASE_BACKUP.xlsx"
 
 
 def image_base64(path):
     try:
         with open(path, "rb") as file:
             return base64.b64encode(file.read()).decode("utf-8")
-    except FileNotFoundError:
+    except Exception:
         return ""
 
 
 logo_b64 = image_base64(LOGO_PATH)
 
+
 # =========================================================
 # DATABASE
 # =========================================================
-DB_NAME = "print_shop.db"
-
 
 def get_connection():
     return sqlite3.connect(DB_NAME, timeout=30)
 
 
 def init_db():
+
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -84,24 +93,20 @@ def init_db():
 
 
 # =========================================================
-# CLOUD BACKUP (Google Drive via Google Apps Script)
-# One readable Excel file containing the COMPLETE database.
+# GOOGLE DRIVE BACKUP
 # =========================================================
-import io
-import requests
-import shutil
-
-DB_NAME = "print_shop.db"
-EXCEL_BACKUP_FILENAME = "ZERO_DATABASE_BACKUP.xlsx"
-
 
 def get_secret(key):
+
     try:
         value = st.secrets.get(key, "")
+
         if value:
             return str(value)
+
     except Exception:
         pass
+
     return os.environ.get(key, "")
 
 
@@ -110,45 +115,101 @@ DRIVE_BACKUP_TOKEN = get_secret("DRIVE_BACKUP_TOKEN").strip()
 
 
 def drive_backup_configured():
-    return bool(DRIVE_BACKUP_URL and DRIVE_BACKUP_TOKEN)
+    return bool(
+        DRIVE_BACKUP_URL and
+        DRIVE_BACKUP_TOKEN
+    )
 
 
 def _json_response(response):
+
     try:
         return response.json()
+
     except Exception:
-        return {"success": False, "error": response.text[:500]}
+
+        return {
+            "success": False,
+            "error": response.text[:500]
+        }
 
 
 def _db_to_excel_bytes():
-    """Export the COMPLETE SQLite database to one readable Excel workbook."""
+
     output = io.BytesIO()
-    conn = sqlite3.connect(DB_NAME, timeout=30)
+
+    conn = sqlite3.connect(
+        DB_NAME,
+        timeout=30
+    )
+
     try:
-        with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            for table in ("customers", "orders", "daily_notes"):
-                df = pd.read_sql_query(f"SELECT * FROM {table}", conn)
-                # Excel sheet names are limited to 31 chars; these are all safe.
-                df.to_excel(writer, sheet_name=table, index=False)
+
+        with pd.ExcelWriter(
+            output,
+            engine="openpyxl"
+        ) as writer:
+
+            for table in (
+                "customers",
+                "orders",
+                "daily_notes"
+            ):
+
+                df = pd.read_sql_query(
+                    f"SELECT * FROM {table}",
+                    conn
+                )
+
+                df.to_excel(
+                    writer,
+                    sheet_name=table,
+                    index=False
+                )
+
     finally:
         conn.close()
+
     return output.getvalue()
 
 
-def _excel_bytes_to_db(excel_bytes, target_path):
-    """Rebuild a valid SQLite database from the single Excel backup."""
-    xls = pd.ExcelFile(io.BytesIO(excel_bytes), engine="openpyxl")
-    required = {"customers", "orders", "daily_notes"}
-    if not required.issubset(set(xls.sheet_names)):
-        raise ValueError("ملف Excel لا يحتوي على جداول قاعدة البيانات المطلوبة.")
+def _excel_bytes_to_db(
+    excel_bytes,
+    target_path
+):
 
-    # Build a fresh database using the same schema, then insert the rows.
-    if FilePath(target_path).exists():
-        FilePath(target_path).unlink()
+    xls = pd.ExcelFile(
+        io.BytesIO(excel_bytes),
+        engine="openpyxl"
+    )
 
-    conn = sqlite3.connect(target_path, timeout=30)
+    required = {
+        "customers",
+        "orders",
+        "daily_notes"
+    }
+
+    if not required.issubset(
+        set(xls.sheet_names)
+    ):
+        raise ValueError(
+            "ملف النسخة الاحتياطية غير صالح."
+        )
+
+    target = FilePath(target_path)
+
+    if target.exists():
+        target.unlink()
+
+    conn = sqlite3.connect(
+        target_path,
+        timeout=30
+    )
+
     try:
+
         cursor = conn.cursor()
+
         cursor.execute("""
             CREATE TABLE customers (
                 customer_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -156,6 +217,7 @@ def _excel_bytes_to_db(excel_bytes, target_path):
                 phone TEXT
             )
         """)
+
         cursor.execute("""
             CREATE TABLE orders (
                 order_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -166,9 +228,11 @@ def _excel_bytes_to_db(excel_bytes, target_path):
                 deposit REAL DEFAULT 0,
                 payment_status TEXT,
                 order_status TEXT,
-                FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
+                FOREIGN KEY (customer_id)
+                REFERENCES customers(customer_id)
             )
         """)
+
         cursor.execute("""
             CREATE TABLE daily_notes (
                 note_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -178,38 +242,98 @@ def _excel_bytes_to_db(excel_bytes, target_path):
             )
         """)
 
-        for table in ("customers", "orders", "daily_notes"):
-            df = pd.read_excel(xls, sheet_name=table, engine="openpyxl")
-            # Convert NaN to None so SQLite stores SQL NULLs cleanly.
-            df = df.where(pd.notna(df), None)
+        for table in (
+            "customers",
+            "orders",
+            "daily_notes"
+        ):
+
+            df = pd.read_excel(
+                xls,
+                sheet_name=table,
+                engine="openpyxl"
+            )
+
+            df = df.where(
+                pd.notna(df),
+                None
+            )
+
             if not df.empty:
+
                 columns = list(df.columns)
-                placeholders = ",".join(["?"] * len(columns))
-                sql = f"INSERT INTO {table} ({','.join(columns)}) VALUES ({placeholders})"
-                rows = [tuple(row) for row in df.itertuples(index=False, name=None)]
-                cursor.executemany(sql, rows)
+
+                placeholders = ",".join(
+                    ["?"] * len(columns)
+                )
+
+                sql = f"""
+                    INSERT INTO {table}
+                    ({','.join(columns)})
+                    VALUES ({placeholders})
+                """
+
+                rows = [
+                    tuple(row)
+                    for row in df.itertuples(
+                        index=False,
+                        name=None
+                    )
+                ]
+
+                cursor.executemany(
+                    sql,
+                    rows
+                )
 
         conn.commit()
-        integrity = conn.execute("PRAGMA integrity_check").fetchone()[0]
+
+        integrity = conn.execute(
+            "PRAGMA integrity_check"
+        ).fetchone()[0]
+
         if integrity != "ok":
-            raise ValueError("فشل فحص سلامة قاعدة البيانات بعد الاسترجاع.")
+            raise ValueError(
+                "فشل فحص قاعدة البيانات."
+            )
+
     finally:
         conn.close()
 
 
 def drive_backup_db():
-    """Upload ONE Excel file; every save replaces the same Drive file."""
-    result = {"success": False, "error": None}
+
+    result = {
+        "success": False,
+        "error": None
+    }
+
     if not drive_backup_configured():
-        result["error"] = "النسخ الاحتياطي غير مُهيأ."
+
+        result["error"] = (
+            "النسخ الاحتياطي غير مُهيأ."
+        )
+
         return result
+
     db_file = FilePath(DB_NAME)
+
     if not db_file.exists():
-        result["error"] = "ملف قاعدة البيانات غير موجود."
+
+        result["error"] = (
+            "ملف قاعدة البيانات غير موجود."
+        )
+
         return result
+
     try:
+
         excel_bytes = _db_to_excel_bytes()
-        encoded = base64.b64encode(excel_bytes).decode("ascii")
+
+        encoded = base64.b64encode(
+            excel_bytes
+        ).decode("ascii")
+
         response = requests.post(
             DRIVE_BACKUP_URL,
             data={
@@ -218,72 +342,168 @@ def drive_backup_db():
                 "filename": EXCEL_BACKUP_FILENAME,
                 "data": encoded,
             },
-            timeout=90,
+            timeout=90
         )
+
         payload = _json_response(response)
-        if response.ok and payload.get("success"):
+
+        if (
+            response.ok and
+            payload.get("success")
+        ):
+
             result["success"] = True
-            result["filename"] = EXCEL_BACKUP_FILENAME
+
+            result["filename"] = (
+                EXCEL_BACKUP_FILENAME
+            )
+
         else:
-            result["error"] = payload.get("error") or f"HTTP {response.status_code}"
+
+            result["error"] = (
+                payload.get("error")
+                or
+                f"HTTP {response.status_code}"
+            )
+
     except Exception as exc:
+
         result["error"] = str(exc)
+
     return result
 
 
 def drive_restore_latest():
-    """Download the ONE Excel backup from Drive and rebuild SQLite."""
-    result = {"success": False, "error": None}
+
+    result = {
+        "success": False,
+        "error": None
+    }
+
     if not drive_backup_configured():
-        result["error"] = "النسخ الاحتياطي غير مُهيأ."
+
+        result["error"] = (
+            "النسخ الاحتياطي غير مُهيأ."
+        )
+
         return result
+
     try:
+
         response = requests.get(
             DRIVE_BACKUP_URL,
-            params={"action": "download", "token": DRIVE_BACKUP_TOKEN, "latest": "1"},
-            timeout=90,
+            params={
+                "action": "download",
+                "token": DRIVE_BACKUP_TOKEN,
+                "latest": "1"
+            },
+            timeout=90
         )
+
         payload = _json_response(response)
-        if not response.ok or not payload.get("success"):
-            result["error"] = payload.get("error") or f"HTTP {response.status_code}"
+
+        if (
+            not response.ok
+            or
+            not payload.get("success")
+        ):
+
+            result["error"] = (
+                payload.get("error")
+                or
+                f"HTTP {response.status_code}"
+            )
+
             return result
 
-        excel_bytes = base64.b64decode(payload.get("data", ""))
-        temp_path = FilePath(DB_NAME + ".restore_tmp")
-        _excel_bytes_to_db(excel_bytes, temp_path)
+        excel_bytes = base64.b64decode(
+            payload.get("data", "")
+        )
+
+        temp_path = FilePath(
+            DB_NAME + ".restore_tmp"
+        )
+
+        _excel_bytes_to_db(
+            excel_bytes,
+            temp_path
+        )
 
         db_file = FilePath(DB_NAME)
+
         if db_file.exists():
+
             shutil.copy2(
                 db_file,
-                f"print_shop_before_restore_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+                (
+                    "print_shop_before_restore_"
+                    +
+                    datetime.now().strftime(
+                        "%Y%m%d_%H%M%S"
+                    )
+                    +
+                    ".db"
+                )
             )
-        shutil.move(str(temp_path), DB_NAME)
+
+        shutil.move(
+            str(temp_path),
+            DB_NAME
+        )
+
         result["success"] = True
-        result["filename"] = payload.get("filename", EXCEL_BACKUP_FILENAME)
+
+        result["filename"] = payload.get(
+            "filename",
+            EXCEL_BACKUP_FILENAME
+        )
+
     except Exception as exc:
+
         try:
-            FilePath(DB_NAME + ".restore_tmp").unlink(missing_ok=True)
+
+            FilePath(
+                DB_NAME + ".restore_tmp"
+            ).unlink(
+                missing_ok=True
+            )
+
         except Exception:
             pass
+
         result["error"] = str(exc)
+
     return result
 
 
 def drive_backup_info():
+
     if not drive_backup_configured():
         return None
+
     try:
+
         response = requests.get(
             DRIVE_BACKUP_URL,
-            params={"action": "status", "token": DRIVE_BACKUP_TOKEN},
-            timeout=30,
+            params={
+                "action": "status",
+                "token": DRIVE_BACKUP_TOKEN
+            },
+            timeout=30
         )
+
         payload = _json_response(response)
-        if response.ok and payload.get("success"):
+
+        if (
+            response.ok
+            and
+            payload.get("success")
+        ):
             return payload
+
     except Exception:
         pass
+
     return None
 
 
@@ -291,70 +511,113 @@ def backup_after_save():
     return drive_backup_db()
 
 
-def restore_from_cloud():
-    return drive_restore_latest()
-
+# =========================================================
+# AUTO RESTORE
+# =========================================================
 
 if not FilePath(DB_NAME).exists():
+
     info = drive_backup_info()
-    if info and info.get("found"):
+
+    if (
+        info
+        and
+        info.get("found")
+    ):
         drive_restore_latest()
+
 
 init_db()
 
+
 # =========================================================
-# CSS / PREMIUM DESIGN
+# DESIGN
 # =========================================================
+
 def set_custom_design():
 
     background_css = ""
 
     if logo_b64:
+
         background_css = f"""
+
         .stApp::before {{
             content: "";
             position: fixed;
             inset: 0;
-            background-image: url("data:image/jpg;base64,{logo_b64}");
+
+            background-image:
+                url("data:image/jpeg;base64,{logo_b64}");
+
             background-repeat: no-repeat;
-            background-position: 20% 30%;
-            background-size: min(1000px, 65vw);
-            opacity: 0.077;
-            filter: none;
+            background-position: 50% 45%;
+            background-size: min(850px, 55vw);
+
+            opacity: .035;
+
             pointer-events: none;
             z-index: 0;
         }}
+
         """
 
     st.markdown(
         f"""
 <style>
 
-/* =========================================================
-   CORE
-   ========================================================= */
+* {{
+    box-sizing: border-box;
+}}
 
-html, body, [class*="css"] {{
+html,
+body,
+.stApp {{
     direction: rtl;
 }}
 
 .stApp {{
+
     background:
-        radial-gradient(circle at 15% 15%, rgba(226,27,43,.10), transparent 28%),
-        radial-gradient(circle at 85% 80%, rgba(55,75,110,.12), transparent 32%),
-        linear-gradient(135deg, #060a12 0%, #0a111d 48%, #060a12 100%);
-    color: #eef2f7;
+
+        radial-gradient(
+            circle at 5% 5%,
+            rgba(225, 25, 45, .14),
+            transparent 25%
+        ),
+
+        radial-gradient(
+            circle at 95% 90%,
+            rgba(70, 85, 120, .16),
+            transparent 28%
+        ),
+
+        linear-gradient(
+            135deg,
+            #05070c 0%,
+            #090d15 45%,
+            #05070c 100%
+        );
+
+    color: #f8fafc;
 }}
 
 {background_css}
 
+
 .main .block-container {{
+
     position: relative;
     z-index: 1;
-    max-width: 1550px;
+
+    max-width: 1600px;
+
     padding-top: 1.2rem;
-    padding-bottom: 2.5rem;
+    padding-bottom: 3rem;
+    padding-left: 2rem;
+    padding-right: 2rem;
 }}
+
 
 #MainMenu,
 footer {{
@@ -367,166 +630,167 @@ header {{
 
 
 /* =========================================================
-   ANIMATIONS
-   ========================================================= */
-
-@keyframes fadeUp {{
-    from {{
-        opacity: 0;
-        transform: translateY(18px);
-    }}
-    to {{
-        opacity: 1;
-        transform: translateY(0);
-    }}
-}}
-
-@keyframes pulseRed {{
-    0%, 100% {{
-        box-shadow: 0 0 0 0 rgba(226,27,43,.20);
-    }}
-    50% {{
-        box-shadow: 0 0 0 8px rgba(226,27,43,0);
-    }}
-}}
-
-.fade-up {{
-    animation: fadeUp .55s ease both;
-}}
-
-.fade-up-2 {{
-    animation: fadeUp .70s ease both;
-}}
-
-.fade-up-3 {{
-    animation: fadeUp .85s ease both;
-}}
-
-
-/* =========================================================
    SIDEBAR
    ========================================================= */
 
 section[data-testid="stSidebar"] {{
+
     background:
-        linear-gradient(180deg, #070c15 0%, #0a101b 55%, #060a12 100%)
-        !important;
-    border-left: 1px solid rgba(226,27,43,.65);
-    box-shadow: -15px 0 45px rgba(0,0,0,.35);
-    overflow: hidden !important;
+        linear-gradient(
+            180deg,
+            #07090f 0%,
+            #0b101a 55%,
+            #06080d 100%
+        ) !important;
+
+    border-left:
+        1px solid rgba(226,27,43,.35);
+
+    box-shadow:
+        -20px 0 60px rgba(0,0,0,.45);
+
 }}
 
 section[data-testid="stSidebar"] > div {{
-    padding: 1rem .85rem 1.5rem;
+    padding: 1rem .8rem 1.5rem;
 }}
 
 section[data-testid="stSidebar"] * {{
-    color: #f1f5f9 !important;
+    color: #f5f7fb !important;
 }}
+
 
 .brand-box {{
     text-align: center;
-    padding: 8px 4px 16px;
+    padding: 5px 5px 18px;
 }}
 
 .brand-logo {{
-    width: 120px;
-    height: 120px;
+    width: 108px;
+    height: 108px;
+
     object-fit: cover;
-    border-radius: 18px;
-    border: 1px solid rgba(255,255,255,.13);
-    box-shadow: 0 18px 45px rgba(0,0,0,.45);
-    animation: fadeUp .6s ease both;
+
+    border-radius: 24px;
+
+    border:
+        1px solid rgba(255,255,255,.13);
+
+    box-shadow:
+        0 20px 55px rgba(0,0,0,.55);
 }}
 
 .brand-name {{
-    font-size: 21px;
-    font-weight: 800;
-    margin-top: 11px;
-    letter-spacing: .3px;
+    font-size: 23px;
+    font-weight: 900;
+    margin-top: 13px;
+    letter-spacing: 1px;
 }}
 
 .brand-caption {{
-    color: #7f8da3 !important;
-    font-size: 11px;
-    margin-top: 2px;
-}}
-
-.side-label {{
-    color: #69778b !important;
-    font-size: 10px;
-    margin: 13px 3px 7px;
-    letter-spacing: .4px;
-}}
-
-.side-note {{
-    background: linear-gradient(145deg, rgba(20,30,48,.94), rgba(9,15,26,.94));
-    border: 1px solid rgba(148,163,184,.13);
-    border-radius: 14px;
-    padding: 13px;
-    margin-top: 12px;
-}}
-
-.side-note-title {{
-    font-weight: 800;
-    font-size: 13px;
-    color: #f8fafc !important;
-}}
-
-.side-note-date {{
-    font-size: 10px;
-    color: #7f8da3 !important;
+    color: #69758a !important;
+    font-size: 9px;
+    letter-spacing: 2px;
     margin-top: 3px;
 }}
 
-.side-note-text {{
-    margin-top: 8px;
-    font-size: 11px;
-    line-height: 1.8;
-    color: #b9c3d1 !important;
-    white-space: pre-wrap;
+
+.side-label {{
+    color: #68758b !important;
+    font-size: 10px;
+    margin: 12px 3px 7px;
 }}
 
 
 /* =========================================================
-   HEADER
+   HERO
    ========================================================= */
 
 .hero {{
-    background:
-        linear-gradient(110deg, rgba(18,28,45,.92), rgba(8,14,25,.82));
-    border: 1px solid rgba(148,163,184,.14);
-    border-radius: 20px;
-    padding: 20px 24px;
-    margin-bottom: 18px;
+
     position: relative;
+
+    background:
+        linear-gradient(
+            135deg,
+            rgba(24,31,47,.92),
+            rgba(8,11,18,.86)
+        );
+
+    border:
+        1px solid rgba(255,255,255,.08);
+
+    border-radius: 25px;
+
+    padding: 27px 30px;
+
+    margin-bottom: 22px;
+
     overflow: hidden;
-    animation: fadeUp .45s ease both;
+
+    box-shadow:
+        0 25px 70px rgba(0,0,0,.28);
+
 }}
 
-.hero::after {{
+.hero::before {{
+
     content: "";
+
     position: absolute;
-    top: 0;
-    right: 0;
-    width: 4px;
-    height: 100%;
-    background: linear-gradient(#ff2639, #a90e1e);
-    animation: pulseRed 2.2s infinite;
+
+    width: 250px;
+    height: 250px;
+
+    left: -100px;
+    top: -140px;
+
+    background:
+        radial-gradient(
+            circle,
+            rgba(226,27,43,.30),
+            transparent 70%
+        );
+
+}}
+
+.hero-line {{
+
+    width: 55px;
+    height: 4px;
+
+    background:
+        linear-gradient(
+            90deg,
+            #ff3044,
+            #9c0c1d
+        );
+
+    border-radius: 20px;
+
+    margin-bottom: 11px;
+
 }}
 
 .hero-title {{
-    font-size: 28px;
-    font-weight: 800;
+
+    font-size: 30px;
+    font-weight: 900;
+
+    letter-spacing: -.7px;
+
     color: #ffffff;
-    line-height: 1.35;
-    word-break: break-word;
+
 }}
 
 .hero-sub {{
-    color: #8492a6;
-    font-size: 12px;
-    margin-top: 3px;
+
+    color: #7f8ba0;
+
+    font-size: 11px;
+
+    margin-top: 5px;
+
 }}
 
 
@@ -535,85 +799,141 @@ section[data-testid="stSidebar"] * {{
    ========================================================= */
 
 .stat-card {{
-    background:
-        linear-gradient(145deg, rgba(20,31,50,.94), rgba(9,15,26,.92));
-    border: 1px solid rgba(148,163,184,.12);
-    border-radius: 17px;
-    padding: 18px 19px;
-    min-height: 118px;
+
     position: relative;
+
+    min-height: 130px;
+
+    padding: 21px;
+
+    border-radius: 21px;
+
+    background:
+        linear-gradient(
+            145deg,
+            rgba(20,27,42,.94),
+            rgba(8,12,20,.92)
+        );
+
+    border:
+        1px solid rgba(255,255,255,.075);
+
+    box-shadow:
+        0 18px 50px rgba(0,0,0,.24);
+
     overflow: hidden;
-    transition: transform .25s ease, border-color .25s ease, box-shadow .25s ease;
-    animation: fadeUp .6s ease both;
+
+    transition:
+        transform .25s ease,
+        border-color .25s ease,
+        box-shadow .25s ease;
+
 }}
 
 .stat-card:hover {{
-    transform: translateY(-5px);
-    border-color: rgba(226,27,43,.42);
-    box-shadow: 0 16px 35px rgba(0,0,0,.28);
+
+    transform: translateY(-6px);
+
+    border-color:
+        rgba(226,27,43,.42);
+
+    box-shadow:
+        0 25px 60px rgba(0,0,0,.36);
+
 }}
 
-.stat-card::before {{
+.stat-card::after {{
+
     content: "";
+
     position: absolute;
-    top: 0;
+
     right: 0;
+    top: 0;
+
     width: 3px;
     height: 100%;
-    background: #e21b2b;
+
+    background:
+        linear-gradient(
+            #ff3044,
+            #9b0d1e
+        );
+
 }}
 
 .stat-icon {{
-    font-size: 22px;
+    font-size: 24px;
 }}
 
 .stat-title {{
-    color: #78869a;
-    font-size: 11px;
-    margin-top: 5px;
+
+    color: #68758a;
+
+    font-size: 10px;
+
+    margin-top: 8px;
+
 }}
 
 .stat-value {{
-    color: #f8fafc;
+
+    color: #ffffff;
+
     font-size: 25px;
-    font-weight: 800;
-    margin-top: 1px;
+
+    font-weight: 900;
+
+    margin-top: 3px;
+
 }}
 
 
 /* =========================================================
-   CARDS
+   PANELS
    ========================================================= */
 
 .panel {{
+
     background:
-        linear-gradient(145deg, rgba(17,28,46,.90), rgba(7,13,24,.86));
-    border: 1px solid rgba(148,163,184,.13);
-    border-radius: 19px;
+        linear-gradient(
+            145deg,
+            rgba(17,24,38,.92),
+            rgba(7,10,17,.88)
+        );
+
+    border:
+        1px solid rgba(255,255,255,.075);
+
+    border-radius: 21px;
+
     padding: 22px;
+
     margin-bottom: 18px;
-    box-shadow: 0 18px 50px rgba(0,0,0,.20);
-    animation: fadeUp .65s ease both;
+
+    box-shadow:
+        0 20px 55px rgba(0,0,0,.22);
+
 }}
 
 .panel-title {{
-    font-size: 20px;
-    font-weight: 800;
-    color: #f8fafc;
+
+    color: #ffffff;
+
+    font-size: 19px;
+
+    font-weight: 900;
+
 }}
 
 .panel-sub {{
-    color: #69788d;
-    font-size: 11px;
-    margin-top: 2px;
-    margin-bottom: 18px;
-}}
 
-.mini-title {{
-    color: #d8dee8;
-    font-size: 14px;
-    font-weight: 800;
-    margin-bottom: 9px;
+    color: #68758a;
+
+    font-size: 10px;
+
+    margin-top: 4px;
+
 }}
 
 
@@ -624,32 +944,43 @@ section[data-testid="stSidebar"] * {{
 div[data-baseweb="input"] > div,
 div[data-baseweb="textarea"] > div,
 div[data-baseweb="select"] > div {{
-    background: #0d1728 !important;
-    border: 1px solid #26364f !important;
-    border-radius: 10px !important;
-    transition: border-color .2s ease, box-shadow .2s ease;
+
+    background:
+        rgba(10,16,27,.92) !important;
+
+    border:
+        1px solid #243047 !important;
+
+    border-radius: 12px !important;
+
 }}
 
 div[data-baseweb="input"] > div:focus-within,
 div[data-baseweb="textarea"] > div:focus-within,
 div[data-baseweb="select"] > div:focus-within {{
-    border-color: rgba(226,27,43,.65) !important;
-    box-shadow: 0 0 0 3px rgba(226,27,43,.08);
+
+    border-color:
+        rgba(226,27,43,.70) !important;
+
+    box-shadow:
+        0 0 0 3px rgba(226,27,43,.08);
+
 }}
 
-input, textarea {{
-    color: #f8fafc !important;
+input,
+textarea {{
+    color: #ffffff !important;
 }}
 
 input::placeholder,
 textarea::placeholder {{
-    color: #536176 !important;
+    color: #4e5c72 !important;
 }}
 
 label {{
     color: #cbd5e1 !important;
-    font-size: 12px !important;
-    font-weight: 600 !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
 }}
 
 
@@ -659,130 +990,451 @@ label {{
 
 .stButton > button,
 .stFormSubmitButton > button {{
-    border: 0 !important;
-    border-radius: 10px !important;
-    min-height: 44px;
-    background: linear-gradient(135deg, #f21f33, #bc1021) !important;
-    color: #fff !important;
-    font-weight: 800 !important;
-    transition: transform .2s ease, box-shadow .2s ease, filter .2s ease;
+
+    min-height: 46px;
+
+    border:
+        1px solid rgba(255,255,255,.06) !important;
+
+    border-radius: 12px !important;
+
+    background:
+        linear-gradient(
+            135deg,
+            #ef2035,
+            #a70d1e
+        ) !important;
+
+    color: white !important;
+
+    font-weight: 900 !important;
+
+    box-shadow:
+        0 10px 25px rgba(226,27,43,.16);
+
+    transition:
+        all .22s ease;
+
 }}
 
 .stButton > button:hover,
 .stFormSubmitButton > button:hover {{
-    transform: translateY(-2px);
-    filter: brightness(1.08);
-    box-shadow: 0 12px 28px rgba(226,27,43,.28);
+
+    transform:
+        translateY(-2px);
+
+    filter:
+        brightness(1.08);
+
+    box-shadow:
+        0 16px 35px rgba(226,27,43,.28);
+
 }}
 
 
 /* =========================================================
-   DATAFRAME
+   TABLE
    ========================================================= */
 
-[data-testid="stDataFrame"] {{
-    border: 1px solid rgba(148,163,184,.15);
-    border-radius: 14px;
-    overflow: hidden;
+.zero-table-wrapper {{
+
+    width: 100%;
+
+    overflow-x: auto;
+
+    border-radius: 18px;
+
+    border:
+        1px solid rgba(255,255,255,.07);
+
+    background:
+        rgba(5,8,14,.78);
+
+}}
+
+.zero-table {{
+
+    width: 100%;
+
+    border-collapse: separate;
+
+    border-spacing: 0;
+
+    min-width: 950px;
+
+    font-size: 12px;
+
+}}
+
+.zero-table th {{
+
+    background:
+        #111827;
+
+    color:
+        #8490a4;
+
+    padding:
+        14px 12px;
+
+    text-align:
+        right;
+
+    font-size:
+        10px;
+
+    font-weight:
+        800;
+
+    white-space:
+        nowrap;
+
+    border-bottom:
+        1px solid rgba(255,255,255,.07);
+
+}}
+
+.zero-table td {{
+
+    padding:
+        14px 12px;
+
+    color:
+        #dce3ed;
+
+    border-bottom:
+        1px solid rgba(255,255,255,.045);
+
+    vertical-align:
+        middle;
+
+}}
+
+.zero-table tr:last-child td {{
+    border-bottom: none;
+}}
+
+.zero-table tr:hover td {{
+
+    background:
+        rgba(226,27,43,.045);
+
+}}
+
+.order-number {{
+
+    color:
+        #ff4254;
+
+    font-weight:
+        900;
+
+}}
+
+.money {{
+
+    font-weight:
+        800;
+
+    color:
+        #ffffff;
+
+}}
+
+.remaining {{
+
+    display:
+        inline-block;
+
+    margin-right:
+        5px;
+
+    color:
+        #ff5364;
+
+    font-weight:
+        900;
+
+    background:
+        rgba(226,27,43,.09);
+
+    padding:
+        4px 8px;
+
+    border-radius:
+        7px;
+
+    border:
+        1px solid rgba(226,27,43,.18);
+
+}}
+
+.paid {{
+    color: #55d68a;
+    font-weight: 800;
+}}
+
+.not-paid {{
+    color: #ffb454;
+    font-weight: 800;
+}}
+
+.status {{
+    display:
+        inline-block;
+
+    padding:
+        5px 9px;
+
+    border-radius:
+        8px;
+
+    font-size:
+        10px;
+
+    font-weight:
+        800;
+}}
+
+.status-progress {{
+
+    color:
+        #ffc35a;
+
+    background:
+        rgba(255,195,90,.09);
+
+}}
+
+.status-ready {{
+
+    color:
+        #61b9ff;
+
+    background:
+        rgba(97,185,255,.09);
+
+}}
+
+.status-done {{
+
+    color:
+        #56d88c;
+
+    background:
+        rgba(86,216,140,.09);
+
 }}
 
 
 /* =========================================================
-   MESSAGES
+   NOTE
+   ========================================================= */
+
+.note-card {{
+
+    background:
+        linear-gradient(
+            145deg,
+            rgba(20,27,42,.95),
+            rgba(8,12,20,.92)
+        );
+
+    border:
+        1px solid rgba(255,255,255,.07);
+
+    border-radius: 18px;
+
+    padding: 17px;
+
+    margin-bottom: 10px;
+
+}}
+
+.note-date {{
+
+    color:
+        #ff4254;
+
+    font-size:
+        10px;
+
+    font-weight:
+        800;
+
+}}
+
+.note-text {{
+
+    color:
+        #cdd5e1;
+
+    font-size:
+        12px;
+
+    line-height:
+        1.9;
+
+    margin-top:
+        7px;
+
+    white-space:
+        pre-wrap;
+
+}}
+
+
+/* =========================================================
+   ALERTS
    ========================================================= */
 
 div[data-testid="stAlert"] {{
-    border-radius: 11px;
+    border-radius: 12px;
 }}
 
 
 /* =========================================================
-   DIVIDER
+   MOBILE
    ========================================================= */
 
-hr {{
-    border-color: rgba(148,163,184,.10) !important;
-}}
+@media(max-width: 768px) {{
 
+    .main .block-container {{
 
-/* =========================================================
-   FOOTER
-   ========================================================= */
+        padding-left: .8rem;
+        padding-right: .8rem;
 
-.footer {{
-    text-align: center;
-    color: #465267;
-    font-size: 10px;
-    padding: 24px 0 4px;
-}}
+    }}
 
-.footer strong {{
-    color: #e21b2b;
-}}
-
-
-/* =========================================================
-   MOBILE FIXES
-   ========================================================= */
-
-@media (max-width: 768px) {{
+    .hero {{
+        padding: 21px;
+        border-radius: 19px;
+    }}
 
     .hero-title {{
         font-size: 20px;
     }}
 
-    .panel-title {{
-        font-size: 17px;
+    .stat-card {{
+        min-height: 105px;
+    }}
+
+    .stat-value {{
+        font-size: 21px;
     }}
 
     div[data-testid="stHorizontalBlock"] {{
         flex-wrap: wrap !important;
-        gap: 0.6rem;
+        gap: .6rem;
     }}
 
-    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {{
+    div[data-testid="stHorizontalBlock"]
+    > div[data-testid="column"] {{
         flex: 1 1 100% !important;
         min-width: 100% !important;
-        width: 100% !important;
     }}
 
-    .stat-card {{
-        min-height: 95px;
-        padding: 14px 15px;
-    }}
-
-    .stat-value {{
-        font-size: 22px;
-    }}
-
-    section[data-testid="stSidebar"][aria-expanded="false"] {{
-        visibility: hidden;
-    }}
 }}
 
-</style>  """,
-        unsafe_allow_html=True,
+</style>
+        """,
+        unsafe_allow_html=True
     )
 
 
 set_custom_design()
 
+
 # =========================================================
 # HELPERS
 # =========================================================
+
 def calculate_payment(total, deposit):
+
     if total > 0 and deposit >= total:
         return "تم الدفع بالكامل"
+
     if deposit > 0:
-        return f"تم دفع عربون — المتبقي: {total - deposit:,.2f} ج"
+
+        remaining = total - deposit
+
+        return (
+            f"تم دفع عربون|{remaining}"
+        )
+
     return "لم يدفع"
 
 
+def get_payment_html(
+    total,
+    deposit
+):
+
+    total = float(total or 0)
+    deposit = float(deposit or 0)
+
+    if total > 0 and deposit >= total:
+
+        return (
+            '<span class="paid">'
+            '✓ تم الدفع بالكامل'
+            '</span>'
+        )
+
+    if deposit > 0:
+
+        remaining = total - deposit
+
+        return (
+            '<span>تم دفع عربون</span> '
+            '<span class="remaining">'
+            f'المتبقي: {remaining:,.2f} ج'
+            '</span>'
+        )
+
+    return (
+        '<span class="not-paid">'
+        'لم يدفع'
+        '</span>'
+    )
+
+
+def get_order_status_html(status):
+
+    if status == "تم التسليم":
+
+        return (
+            '<span class="status status-done">'
+            '✓ تم التسليم'
+            '</span>'
+        )
+
+    if status == "جاهز للتسليم":
+
+        return (
+            '<span class="status status-ready">'
+            '● جاهز للتسليم'
+            '</span>'
+        )
+
+    return (
+        '<span class="status status-progress">'
+        '● قيد التنفيذ'
+        '</span>'
+    )
+
+
 def get_statistics():
+
     conn = get_connection()
 
     df = pd.read_sql_query(
-        "SELECT total_cost, order_status FROM orders",
+        """
+        SELECT
+            total_cost,
+            order_status
+        FROM orders
+        """,
         conn
     )
 
@@ -793,52 +1445,93 @@ def get_statistics():
 
     return (
         len(df),
-        int((df["order_status"] == "تم التسليم").sum()),
-        int((df["order_status"] == "قيد التنفيذ").sum()),
-        float(df["total_cost"].fillna(0).sum()),
+        int(
+            (
+                df["order_status"]
+                == "تم التسليم"
+            ).sum()
+        ),
+        int(
+            (
+                df["order_status"]
+                == "قيد التنفيذ"
+            ).sum()
+        ),
+        float(
+            df["total_cost"]
+            .fillna(0)
+            .sum()
+        )
     )
 
 
 def get_today_note():
+
     conn = get_connection()
+
     cursor = conn.cursor()
 
     cursor.execute(
-        "SELECT note_text FROM daily_notes WHERE note_date = ?",
-        (date.today().isoformat(),)
+        """
+        SELECT note_text
+        FROM daily_notes
+        WHERE note_date = ?
+        """,
+        (
+            date.today().isoformat(),
+        )
     )
 
     row = cursor.fetchone()
+
     conn.close()
 
     return row[0] if row else ""
 
 
 def save_today_note(note_text):
+
     conn = get_connection()
+
     cursor = conn.cursor()
 
     today = date.today().isoformat()
 
-    cursor.execute("""
-        INSERT INTO daily_notes (note_date, note_text, updated_at)
-        VALUES (?, ?, CURRENT_TIMESTAMP)
+    cursor.execute(
+        """
+        INSERT INTO daily_notes
+        (
+            note_date,
+            note_text,
+            updated_at
+        )
+        VALUES
+        (?, ?, CURRENT_TIMESTAMP)
+
         ON CONFLICT(note_date)
         DO UPDATE SET
             note_text = excluded.note_text,
             updated_at = CURRENT_TIMESTAMP
-    """, (today, note_text))
+        """,
+        (
+            today,
+            note_text
+        )
+    )
 
     conn.commit()
     conn.close()
 
 
-def get_recent_notes(limit=5):
+def get_recent_notes(limit=10):
+
     conn = get_connection()
 
     df = pd.read_sql_query(
         """
-        SELECT note_date, note_text
+        SELECT
+            note_date,
+            note_text
         FROM daily_notes
         WHERE TRIM(note_text) <> ''
         ORDER BY note_date DESC
@@ -849,24 +1542,35 @@ def get_recent_notes(limit=5):
     )
 
     conn.close()
+
     return df
 
 
 # =========================================================
 # SIDEBAR
 # =========================================================
+
 with st.sidebar:
 
     if logo_b64:
+
         st.markdown(
             f"""
             <div class="brand-box">
-                <img class="brand-logo"
-                     src="data:image/jpeg;base64,{logo_b64}">
-                <div class="brand-name">ZERO PLUS</div>
+
+                <img
+                    class="brand-logo"
+                    src="data:image/jpeg;base64,{logo_b64}"
+                >
+
+                <div class="brand-name">
+                    ZERO PLUS
+                </div>
+
                 <div class="brand-caption">
                     PRINT • DESIGN • ADVERTISING
                 </div>
+
             </div>
             """,
             unsafe_allow_html=True
@@ -874,17 +1578,12 @@ with st.sidebar:
 
     st.divider()
 
-    st.markdown(
-        '<div class="side-label">القائمة الرئيسية</div>',
-        unsafe_allow_html=True
-    )
-
     menu = [
         "➕  تسجيل طلب جديد",
-        "📋  عرض واستعلام الطلبات",
-        "⚙️  تحديث حالة طلب",
-        "📝  المفكرة اليومية",
-        "☁️  النسخ الاحتياطي (Google Drive)",
+        "📋  الطلبات",
+        "⚙️  تحديث طلب",
+        "📝  المفكرة",
+        "☁️  Google Drive",
     ]
 
     choice = st.selectbox(
@@ -895,106 +1594,157 @@ with st.sidebar:
 
     st.divider()
 
-    # Small preview of today's note
     today_note = get_today_note()
 
     if today_note:
-        preview = today_note[:150]
-        if len(today_note) > 150:
+
+        preview = today_note[:110]
+
+        if len(today_note) > 110:
             preview += "..."
 
         st.markdown(
             f"""
-            <div class="side-note">
-                <div class="side-note-title">📌 Today note</div>
-                <div class="side-note-date">
-                    {date.today().strftime("%Y-%m-%d")}
+            <div class="note-card">
+
+                <div class="note-date">
+                    📌 {date.today().isoformat()}
                 </div>
-                <div class="side-note-text">{preview}</div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-    else:
-        st.markdown(
-            """
-            <div class="side-note">
-                <div class="side-note-title">📌 مفيش ملاحظات</div>
-                <div class="side-note-date">
-                    اكتب ملاحظة من قسم المفكرة اليومية
+
+                <div class="note-text">
+                    {preview}
                 </div>
+
             </div>
             """,
             unsafe_allow_html=True
         )
 
+
 # =========================================================
-# TOP HEADER
+# HEADER
 # =========================================================
-today_text = date.today().strftime("%Y-%m-%d")
+
+today_text = date.today().strftime(
+    "%Y-%m-%d"
+)
 
 st.markdown(
     f"""
     <div class="hero">
-        <div style="display:flex;justify-content:space-between;
-                    align-items:center;gap:20px;direction:ltr">
-            <div>
-                <div class="hero-title">ZERO Advertising | Management System</div>
-                <div class="hero-sub">{today_text}</div>
-            </div>
+
+        <div class="hero-line"></div>
+
+        <div class="hero-title">
+            ZERO Advertising
         </div>
+
+        <div class="hero-sub">
+            Management System&nbsp;&nbsp;•&nbsp;&nbsp;{today_text}
+        </div>
+
     </div>
     """,
     unsafe_allow_html=True
 )
 
+
 # =========================================================
-# DASHBOARD STATS
+# DASHBOARD
 # =========================================================
-total_orders, completed, in_progress, total_sales = get_statistics()
+
+total_orders, completed, in_progress, total_sales = (
+    get_statistics()
+)
 
 c1, c2, c3, c4 = st.columns(4)
 
 stats = [
-    ("📦", "إجمالي الطلبات", total_orders),
-    ("🚀", "طلبات قيد التنفيذ", in_progress),
-    ("✅", "تم التسليم", completed),
-    ("💰", "إجمالي قيمة الطلبات", f"{total_sales:,.0f} ج"),
+
+    (
+        "📦",
+        "إجمالي الطلبات",
+        total_orders
+    ),
+
+    (
+        "⚡",
+        "قيد التنفيذ",
+        in_progress
+    ),
+
+    (
+        "✓",
+        "تم التسليم",
+        completed
+    ),
+
+    (
+        "💰",
+        "إجمالي الطلبات",
+        f"{total_sales:,.0f} ج"
+    ),
 ]
 
-for col, (icon, title, value) in zip([c1, c2, c3, c4], stats):
+
+for col, (icon, title, value) in zip(
+    [c1, c2, c3, c4],
+    stats
+):
+
     with col:
+
         st.markdown(
             f"""
             <div class="stat-card">
-                <div class="stat-icon">{icon}</div>
-                <div class="stat-title">{title}</div>
-                <div class="stat-value">{value}</div>
+
+                <div class="stat-icon">
+                    {icon}
+                </div>
+
+                <div class="stat-title">
+                    {title}
+                </div>
+
+                <div class="stat-value">
+                    {value}
+                </div>
+
             </div>
             """,
             unsafe_allow_html=True
         )
 
-st.markdown("<br>", unsafe_allow_html=True)
+
+st.markdown(
+    "<br>",
+    unsafe_allow_html=True
+)
+
 
 # =========================================================
-# 1. NEW ORDER
+# NEW ORDER
 # =========================================================
+
 if choice == "➕  تسجيل طلب جديد":
 
     st.markdown(
         """
         <div class="panel">
-            <div class="panel-title">📝 تسجيل طلب جديد</div>
-            <div class="panel-sub">
-                أضف بيانات العميل والطلب والتكلفة وحالة التنفيذ.
+
+            <div class="panel-title">
+                تسجيل طلب جديد
             </div>
+
         </div>
         """,
         unsafe_allow_html=True
     )
 
-    with st.form("add_order_form", clear_on_submit=True):
+    with st.form(
+        "add_order_form",
+        clear_on_submit=True
+    ):
 
         col1, col2, col3 = st.columns(3)
 
@@ -1002,7 +1752,7 @@ if choice == "➕  تسجيل طلب جديد":
 
             customer_name = st.text_input(
                 "اسم العميل *",
-                placeholder="مثال: أحمد محمد"
+                placeholder="اسم العميل"
             )
 
             customer_phone = st.text_input(
@@ -1014,71 +1764,156 @@ if choice == "➕  تسجيل طلب جديد":
 
             order_details = st.text_area(
                 "تفاصيل الطلب *",
-                placeholder="مثال: 500 فلاير — مقاس A5 — وجهين — ألوان...",
-                height=155
+                placeholder="تفاصيل الطلب...",
+                height=150
             )
 
         with col3:
 
+            # =================================================
+            # IMPORTANT:
+            # value=None means the field starts EMPTY.
+            # No zero to type over.
+            # =================================================
+
             total_cost = st.number_input(
-                "التكلفة الإجمالية (جنيه)",
+                "التكلفة الإجمالية",
                 min_value=0.0,
-                step=0.0,
-                format="%.0f"
+                value=None,
+                step=1.0,
+                format="%.0f",
+                placeholder="اكتب المبلغ"
             )
 
             deposit = st.number_input(
-                "المبلغ المدفوع / العربون",
+                "المبلغ المدفوع",
                 min_value=0.0,
-                step=0.0,
+                value=None,
+                step=1.0,
+                format="%.0f",
+                placeholder="اكتب المبلغ"
             )
 
             order_status = st.selectbox(
                 "حالة الطلب",
-                ["قيد التنفيذ", "جاهز للتسليم", "تم التسليم"]
+                [
+                    "قيد التنفيذ",
+                    "جاهز للتسليم",
+                    "تم التسليم"
+                ]
             )
 
         st.divider()
 
-        if total_cost > 0:
-            remaining = total_cost - deposit
+        if (
+            total_cost is not None
+            and
+            total_cost > 0
+        ):
 
-            if deposit > total_cost:
-                st.warning("⚠️ العربون أكبر من إجمالي قيمة الطلب.")
+            current_deposit = (
+                deposit
+                if deposit is not None
+                else 0
+            )
+
+            remaining = (
+                total_cost
+                - current_deposit
+            )
+
+            if current_deposit > total_cost:
+
+                st.warning(
+                    "العربون أكبر من قيمة الطلب."
+                )
+
             elif remaining > 0:
-                st.info(f"💳 المتبقي على العميل: {remaining:,.2f} جنيه")
+
+                st.markdown(
+                    f"""
+                    <div class="panel"
+                         style="margin:0;
+                                padding:13px 16px;">
+
+                        <span>
+                            المتبقي على العميل
+                        </span>
+
+                        <span class="remaining">
+                            {remaining:,.2f} ج
+                        </span>
+
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
             else:
-                st.success("✅ تم دفع قيمة الطلب بالكامل.")
+
+                st.success(
+                    "✓ تم دفع قيمة الطلب بالكامل."
+                )
 
         save = st.form_submit_button(
-            "💾  حفظ الطلب",
+            "حفظ الطلب",
             use_container_width=True
         )
 
         if save:
 
+            final_total = (
+                float(total_cost)
+                if total_cost is not None
+                else 0.0
+            )
+
+            final_deposit = (
+                float(deposit)
+                if deposit is not None
+                else 0.0
+            )
+
             if not customer_name.strip():
-                st.error("❌ اكتب اسم العميل.")
+
+                st.error(
+                    "اكتب اسم العميل."
+                )
 
             elif not order_details.strip():
-                st.error("❌ اكتب تفاصيل الطلب.")
 
-            elif deposit > total_cost and total_cost > 0:
-                st.error("❌ العربون لا يمكن أن يكون أكبر من إجمالي الطلب.")
+                st.error(
+                    "اكتب تفاصيل الطلب."
+                )
+
+            elif (
+                final_deposit > final_total
+                and
+                final_total > 0
+            ):
+
+                st.error(
+                    "العربون لا يمكن أن يكون أكبر من قيمة الطلب."
+                )
 
             else:
 
                 payment_status = calculate_payment(
-                    total_cost,
-                    deposit
+                    final_total,
+                    final_deposit
                 )
 
                 conn = get_connection()
+
                 cursor = conn.cursor()
 
                 cursor.execute(
                     """
-                    INSERT INTO customers (name, phone)
+                    INSERT INTO customers
+                    (
+                        name,
+                        phone
+                    )
                     VALUES (?, ?)
                     """,
                     (
@@ -1105,8 +1940,8 @@ if choice == "➕  تسجيل طلب جديد":
                     (
                         customer_id,
                         order_details.strip(),
-                        total_cost,
-                        deposit,
+                        final_total,
+                        final_deposit,
                         payment_status,
                         order_status
                     )
@@ -1118,26 +1953,34 @@ if choice == "➕  تسجيل طلب جديد":
                 backup_result = backup_after_save()
 
                 st.success(
-                    f"✅ تم حفظ طلب العميل «{customer_name}» بنجاح."
+                    f"تم حفظ طلب «{customer_name}»."
                 )
+
                 if not backup_result["success"]:
+
                     st.warning(
-                        "⚠️ الداتا اتحفظت، لكن حصلت مشكلة في المزامنة السحابية: "
-                        + str(backup_result["error"])
+                        "تم الحفظ، لكن لم تتم المزامنة مع Drive: "
+                        +
+                        str(
+                            backup_result["error"]
+                        )
                     )
 
+
 # =========================================================
-# 2. ORDERS
+# ORDERS
 # =========================================================
-elif choice == "📋  عرض واستعلام الطلبات":
+
+elif choice == "📋  الطلبات":
 
     st.markdown(
         """
         <div class="panel">
-            <div class="panel-title">📋 الطلبات المسجلة</div>
-            <div class="panel-sub">
-                ابحث عن العملاء واستعرض جميع الطلبات والحسابات.
+
+            <div class="panel-title">
+                الطلبات
             </div>
+
         </div>
         """,
         unsafe_allow_html=True
@@ -1148,18 +1991,21 @@ elif choice == "📋  عرض واستعلام الطلبات":
     df = pd.read_sql_query(
         """
         SELECT
-            o.order_id AS 'رقم الطلب',
-            c.name AS 'اسم العميل',
-            c.phone AS 'التليفون',
-            o.order_details AS 'التفاصيل',
-            o.total_cost AS 'الإجمالي',
-            o.deposit AS 'العربون',
-            o.payment_status AS 'حالة الدفع',
-            o.order_status AS 'حالة الطلب',
-            o.order_date AS 'تاريخ الطلب'
+            o.order_id AS order_id,
+            c.name AS customer_name,
+            c.phone AS phone,
+            o.order_details AS details,
+            o.total_cost AS total_cost,
+            o.deposit AS deposit,
+            o.payment_status AS payment_status,
+            o.order_status AS order_status,
+            o.order_date AS order_date
+
         FROM orders o
+
         JOIN customers c
             ON o.customer_id = c.customer_id
+
         ORDER BY o.order_id DESC
         """,
         conn
@@ -1168,21 +2014,26 @@ elif choice == "📋  عرض واستعلام الطلبات":
     conn.close()
 
     if df.empty:
-        st.info("📭 لا توجد طلبات مسجلة حالياً.")
+
+        st.info(
+            "لا توجد طلبات مسجلة."
+        )
 
     else:
 
         search_col, filter_col = st.columns(2)
 
         with search_col:
+
             search_name = st.text_input(
-                "🔍 البحث",
-                placeholder="ابحث باسم العميل..."
+                "البحث",
+                placeholder="اسم العميل..."
             )
 
         with filter_col:
+
             status_filter = st.selectbox(
-                "📌 حالة الطلب",
+                "حالة الطلب",
                 [
                     "الكل",
                     "قيد التنفيذ",
@@ -1192,8 +2043,11 @@ elif choice == "📋  عرض واستعلام الطلبات":
             )
 
         if search_name:
+
             df = df[
-                df["اسم العميل"].str.contains(
+                df["customer_name"]
+                .astype(str)
+                .str.contains(
                     search_name,
                     case=False,
                     na=False
@@ -1201,51 +2055,179 @@ elif choice == "📋  عرض واستعلام الطلبات":
             ]
 
         if status_filter != "الكل":
-            df = df[df["حالة الطلب"] == status_filter]
 
-        st.dataframe(
-            df,
-            use_container_width=True,
-            hide_index=True,
-            height=520,
-            column_config={
-                "الإجمالي": st.column_config.NumberColumn(
-                    format="%.2f ج"
-                ),
-                "العربون": st.column_config.NumberColumn(
-                    format="%.2f ج"
-                ),
-            }
+            df = df[
+                df["order_status"]
+                ==
+                status_filter
+            ]
+
+        # =================================================
+        # CUSTOM PREMIUM TABLE
+        # This allows the remaining amount to have its
+        # own color WITHOUT creating another column.
+        # =================================================
+
+        rows_html = ""
+
+        for _, row in df.iterrows():
+
+            payment_html = get_payment_html(
+                row["total_cost"],
+                row["deposit"]
+            )
+
+            status_html = get_order_status_html(
+                row["order_status"]
+            )
+
+            details = str(
+                row["details"] or ""
+            )
+
+            details = (
+                details
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+            )
+
+            name = str(
+                row["customer_name"] or ""
+            )
+
+            phone = str(
+                row["phone"] or ""
+            )
+
+            rows_html += f"""
+
+            <tr>
+
+                <td>
+                    <span class="order-number">
+                        #{int(row["order_id"])}
+                    </span>
+                </td>
+
+                <td>
+                    {name}
+                </td>
+
+                <td>
+                    {phone}
+                </td>
+
+                <td>
+                    {details}
+                </td>
+
+                <td>
+                    <span class="money">
+                        {float(row["total_cost"] or 0):,.2f} ج
+                    </span>
+                </td>
+
+                <td>
+                    <span class="money">
+                        {float(row["deposit"] or 0):,.2f} ج
+                    </span>
+                </td>
+
+                <td>
+                    {payment_html}
+                </td>
+
+                <td>
+                    {status_html}
+                </td>
+
+                <td>
+                    {row["order_date"]}
+                </td>
+
+            </tr>
+
+            """
+
+        st.markdown(
+            f"""
+
+            <div class="zero-table-wrapper">
+
+                <table class="zero-table">
+
+                    <thead>
+
+                        <tr>
+
+                            <th>الطلب</th>
+                            <th>العميل</th>
+                            <th>التليفون</th>
+                            <th>التفاصيل</th>
+                            <th>الإجمالي</th>
+                            <th>المدفوع</th>
+                            <th>حالة الدفع</th>
+                            <th>الحالة</th>
+                            <th>التاريخ</th>
+
+                        </tr>
+
+                    </thead>
+
+                    <tbody>
+
+                        {rows_html}
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+            """,
+            unsafe_allow_html=True
         )
 
-        st.caption(f"عدد النتائج: {len(df)}")
+        st.caption(
+            f"عدد النتائج: {len(df)}"
+        )
+
 
 # =========================================================
-# 3. UPDATE ORDER
+# UPDATE ORDER
 # =========================================================
-elif choice == "⚙️  تحديث حالة طلب":
+
+elif choice == "⚙️  تحديث طلب":
 
     st.markdown(
         """
         <div class="panel">
-            <div class="panel-title">⚙️ تحديث حالة طلب</div>
-            <div class="panel-sub">
-                عدّل العربون وحالة التنفيذ وسيتم تحديث حالة الدفع تلقائياً.
+
+            <div class="panel-title">
+                تحديث الطلب
             </div>
+
         </div>
         """,
         unsafe_allow_html=True
     )
 
     conn = get_connection()
+
     cursor = conn.cursor()
 
     cursor.execute(
         """
-        SELECT o.order_id, c.name
+        SELECT
+            o.order_id,
+            c.name
+
         FROM orders o
+
         JOIN customers c
             ON o.customer_id = c.customer_id
+
         ORDER BY o.order_id DESC
         """
     )
@@ -1254,21 +2236,29 @@ elif choice == "⚙️  تحديث حالة طلب":
 
     if not orders:
 
-        st.info("📭 لا توجد طلبات لتعديلها.")
+        st.info(
+            "لا توجد طلبات."
+        )
+
+        conn.close()
 
     else:
 
         options = {
-            f"طلب #{order_id} — {name}": order_id
+            f"طلب #{order_id} — {name}":
+            order_id
+
             for order_id, name in orders
         }
 
         selected_label = st.selectbox(
-            "📌 اختر الطلب",
+            "اختر الطلب",
             list(options.keys())
         )
 
-        selected_id = options[selected_label]
+        selected_id = options[
+            selected_label
+        ]
 
         cursor.execute(
             """
@@ -1277,13 +2267,23 @@ elif choice == "⚙️  تحديث حالة طلب":
                 deposit,
                 payment_status,
                 order_status
+
             FROM orders
+
             WHERE order_id = ?
             """,
             (selected_id,)
         )
 
         current = cursor.fetchone()
+
+        total_cost = float(
+            current[0] or 0
+        )
+
+        old_deposit = float(
+            current[1] or 0
+        )
 
         col1, col2 = st.columns(2)
 
@@ -1292,45 +2292,84 @@ elif choice == "⚙️  تحديث حالة طلب":
             st.markdown(
                 """
                 <div class="panel">
-                    <div class="panel-title">💰 الحساب</div>
+
+                    <div class="panel-title">
+                        💰 الحساب
+                    </div>
+
                 </div>
                 """,
                 unsafe_allow_html=True
             )
 
-            total_cost = float(current[0] or 0)
-
             new_deposit = st.number_input(
                 "المبلغ المدفوع",
                 min_value=0.0,
-                value=float(current[1] or 0),
-                step=10.0
+                value=old_deposit if old_deposit > 0 else None,
+                step=1.0,
+                format="%.0f",
+                placeholder="اكتب المبلغ"
             )
 
-            remaining = total_cost - new_deposit
+            final_deposit = (
+                float(new_deposit)
+                if new_deposit is not None
+                else 0.0
+            )
 
-            if new_deposit > total_cost and total_cost > 0:
-                st.error("❌ المبلغ المدفوع أكبر من قيمة الطلب.")
-                new_payment_status = current[2]
-            else:
-                new_payment_status = calculate_payment(
-                    total_cost,
-                    new_deposit
+            remaining = (
+                total_cost
+                -
+                final_deposit
+            )
+
+            if (
+                final_deposit > total_cost
+                and
+                total_cost > 0
+            ):
+
+                st.error(
+                    "المبلغ المدفوع أكبر من قيمة الطلب."
                 )
 
-                if remaining > 0:
-                    st.info(
-                        f"المتبقي: {remaining:,.2f} جنيه"
-                    )
-                elif total_cost > 0:
-                    st.success("✅ تم دفع الطلب بالكامل.")
+            elif remaining > 0:
+
+                st.markdown(
+                    f"""
+                    <div class="panel"
+                         style="padding:14px;
+                                margin-top:10px;">
+
+                        <span>
+                            المتبقي
+                        </span>
+
+                        <span class="remaining">
+                            {remaining:,.2f} ج
+                        </span>
+
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+            elif total_cost > 0:
+
+                st.success(
+                    "✓ تم دفع الطلب بالكامل."
+                )
 
         with col2:
 
             st.markdown(
                 """
                 <div class="panel">
-                    <div class="panel-title">📦 التنفيذ</div>
+
+                    <div class="panel-title">
+                        📦 التنفيذ
+                    </div>
+
                 </div>
                 """,
                 unsafe_allow_html=True
@@ -1343,36 +2382,53 @@ elif choice == "⚙️  تحديث حالة طلب":
             ]
 
             current_status = current[3]
+
             if current_status not in statuses:
                 current_status = statuses[0]
 
             new_order_status = st.selectbox(
-                "حالة الطلب الجديدة",
+                "حالة الطلب",
                 statuses,
-                index=statuses.index(current_status)
+                index=statuses.index(
+                    current_status
+                )
             )
 
         if st.button(
-            "🔄  حفظ التعديلات",
+            "حفظ التعديلات",
             use_container_width=True
         ):
 
-            if new_deposit > total_cost and total_cost > 0:
-                st.error("❌ لا يمكن دفع مبلغ أكبر من قيمة الطلب.")
+            if (
+                final_deposit > total_cost
+                and
+                total_cost > 0
+            ):
+
+                st.error(
+                    "لا يمكن دفع مبلغ أكبر من قيمة الطلب."
+                )
 
             else:
+
+                new_payment_status = calculate_payment(
+                    total_cost,
+                    final_deposit
+                )
 
                 cursor.execute(
                     """
                     UPDATE orders
+
                     SET
                         deposit = ?,
                         payment_status = ?,
                         order_status = ?
+
                     WHERE order_id = ?
                     """,
                     (
-                        new_deposit,
+                        final_deposit,
                         new_payment_status,
                         new_order_status,
                         selected_id
@@ -1384,182 +2440,276 @@ elif choice == "⚙️  تحديث حالة طلب":
 
                 backup_result = backup_after_save()
 
-                st.success("✅ تم تحديث الطلب بنجاح.")
+                st.success(
+                    "تم تحديث الطلب."
+                )
+
                 if not backup_result["success"]:
+
                     st.warning(
-                        "⚠️ التحديث اتحفظ، لكن حصلت مشكلة في المزامنة السحابية: "
-                        + str(backup_result["error"])
+                        "تم التحديث، لكن لم تتم المزامنة مع Drive: "
+                        +
+                        str(
+                            backup_result["error"]
+                        )
                     )
+
                 st.rerun()
 
-    conn.close()
 
 # =========================================================
-# 4. DAILY NOTEBOOK
+# DAILY NOTE
 # =========================================================
-elif choice == "📝  المفكرة اليومية":
+
+elif choice == "📝  المفكرة":
 
     st.markdown(
         """
         <div class="panel">
-            <div class="panel-title">📝 المفكرة اليومية</div>
-            <div class="panel-sub">
-                اكتب أي ملاحظات أو مهام أو تعليمات خاصة بالمطبعة.
-                كل يوم له ملاحظة مستقلة بالتاريخ.
+
+            <div class="panel-title">
+                المفكرة اليومية
             </div>
+
         </div>
         """,
         unsafe_allow_html=True
     )
 
-    today = date.today()
-    today_iso = today.isoformat()
-
-    st.markdown(
-        f"""
-        <div class="panel">
-            <div class="panel-title">📌 ملاحظة يوم {today_iso}</div>
-            <div class="panel-sub">
-                أي كلام تكتبه هنا يتم حفظه لهذا اليوم فقط ويمكن تعديله لاحقاً.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    today_iso = date.today().isoformat()
 
     current_note = get_today_note()
 
     note = st.text_area(
-        "اكتب ملاحظتك هنا",
+        "ملاحظة اليوم",
         value=current_note,
         height=260,
-        placeholder=(
-            "مثال:\n"
-            "• أحمد يستلم البانر الساعة 5\n"
-            "• مراجعة تصميم محل الملابس\n"
-            "• شراء خامة فينيل\n"
-            "• الاتصال بالعميل محمد..."
-        )
+        placeholder="اكتب ملاحظات اليوم..."
     )
 
     if st.button(
-        "💾  حفظ ملاحظة اليوم",
+        "حفظ الملاحظة",
         use_container_width=True
     ):
 
-        save_today_note(note.strip())
+        save_today_note(
+            note.strip()
+        )
+
         backup_result = backup_after_save()
 
         st.success(
-            f"✅ تم حفظ ملاحظة يوم {today_iso}."
+            "تم حفظ الملاحظة."
         )
+
         if not backup_result["success"]:
+
             st.warning(
-                "⚠️ الملاحظة اتحفظت، لكن حصلت مشكلة في المزامنة السحابية: "
-                + str(backup_result["error"])
+                "تم الحفظ، لكن لم تتم المزامنة مع Drive: "
+                +
+                str(
+                    backup_result["error"]
+                )
             )
 
         st.rerun()
-
-    st.markdown("<br>", unsafe_allow_html=True)
 
     recent = get_recent_notes(10)
 
     if not recent.empty:
 
         st.markdown(
-            """
-            <div class="panel">
-                <div class="panel-title">🗓️ الملاحظات السابقة</div>
-                <div class="panel-sub">
-                    آخر 10 أيام تم تسجيل ملاحظات بها.
-                </div>
-            </div>
-            """,
+            "<br>",
             unsafe_allow_html=True
         )
 
         for _, row in recent.iterrows():
 
-            with st.expander(
-                f"📅 {row['note_date']}"
-            ):
-                st.write(row["note_text"])
+            st.markdown(
+                f"""
+                <div class="note-card">
+
+                    <div class="note-date">
+                        📅 {row["note_date"]}
+                    </div>
+
+                    <div class="note-text">
+                        {row["note_text"]}
+                    </div>
+
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
 
 # =========================================================
-# 5. CLOUD BACKUP (Google Drive)
+# GOOGLE DRIVE
 # =========================================================
-elif choice == "☁️  النسخ الاحتياطي (Google Drive)":
+
+elif choice == "☁️  Google Drive":
 
     st.markdown(
         """
         <div class="panel">
-            <div class="panel-title">☁️ حماية البيانات — Google Drive</div>
-            <div class="panel-sub">
-                بعد كل حفظ، نسخة مضغوطة من قاعدة البيانات تُرفع تلقائياً إلى مجلد ZERO BACKUPS في Google Drive.
+
+            <div class="panel-title">
+                ☁️ Google Drive
             </div>
+
         </div>
         """,
         unsafe_allow_html=True
     )
 
     if not drive_backup_configured():
-        st.error("❌ النسخ الاحتياطي غير مُهيأ.")
-        st.markdown("### ⚙️ الإعداد لأول مرة")
-        st.markdown(
-            """
-            1) افتح Google Apps Script وأنشئ مشروعاً جديداً.
-            2) الصق كود google_drive_backup_apps_script.gs.
-            3) Deploy → New deployment → Web app.
-            4) Execute as: **Me** — Who has access: **Anyone**.
-            5) انسخ Web app URL.
-            6) ضعه في Streamlit Secrets مع السر الموجود في Apps Script.
-            """
-        )
-        st.info("لا تحتاج Google Cloud Project أو Service Account أو Drive API.")
-    else:
-        st.success("✅ Google Drive Backup متصل.")
 
-        db_file = FilePath(DB_NAME)
+        st.error(
+            "النسخ الاحتياطي غير مُهيأ."
+        )
+
+        st.info(
+            "ضع DRIVE_BACKUP_URL و DRIVE_BACKUP_TOKEN "
+            "داخل Streamlit Secrets."
+        )
+
+    else:
+
+        st.success(
+            "✓ Google Drive متصل"
+        )
+
+        db_file = FilePath(
+            DB_NAME
+        )
+
         if db_file.exists():
-            db_size = db_file.stat().st_size / 1024
-            st.info(f"📦 قاعدة البيانات الحالية: `{DB_NAME}` — الحجم: {db_size:.1f} KB")
+
+            db_size = (
+                db_file.stat().st_size
+                /
+                1024
+            )
+
+            st.info(
+                f"قاعدة البيانات: "
+                f"{db_size:.1f} KB"
+            )
 
         remote = drive_backup_info()
-        if remote and remote.get("found"):
-            st.success("☁️ آخر نسخة: " + str(remote.get("filename","غير معروف")))
+
+        if (
+            remote
+            and
+            remote.get("found")
+        ):
+
+            st.success(
+                "آخر نسخة: "
+                +
+                str(
+                    remote.get(
+                        "filename",
+                        EXCEL_BACKUP_FILENAME
+                    )
+                )
+            )
+
         else:
-            st.info("📭 لا توجد نسخة احتياطية على Google Drive حتى الآن.")
 
-        if st.button("☁️ عمل Backup الآن", use_container_width=True):
-            with st.spinner("⏳ جاري رفع النسخة..."):
+            st.info(
+                "لا توجد نسخة Backup حتى الآن."
+            )
+
+        st.markdown(
+            "<br>",
+            unsafe_allow_html=True
+        )
+
+        if st.button(
+            "☁️ Backup الآن",
+            use_container_width=True
+        ):
+
+            with st.spinner(
+                "جاري رفع النسخة..."
+            ):
+
                 result = drive_backup_db()
+
             if result["success"]:
-                st.success("✅ تم رفع النسخة بنجاح إلى Google Drive.")
+
+                st.success(
+                    "✓ تم رفع النسخة بنجاح."
+                )
+
             else:
-                st.error("❌ فشل النسخ الاحتياطي:\n\n" + str(result["error"]))
 
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.warning("⚠️ الاسترجاع سيستبدل قاعدة البيانات الحالية بآخر Backup موجود على Google Drive.")
+                st.error(
+                    "فشل Backup: "
+                    +
+                    str(
+                        result["error"]
+                    )
+                )
 
-        if st.button("🔄 استرجاع آخر Backup", use_container_width=True):
-            with st.spinner("⏳ جاري تنزيل وفحص النسخة..."):
+        st.markdown(
+            "<br>",
+            unsafe_allow_html=True
+        )
+
+        st.warning(
+            "الاسترجاع سيستبدل قاعدة البيانات الحالية."
+        )
+
+        if st.button(
+            "🔄 استرجاع آخر Backup",
+            use_container_width=True
+        ):
+
+            with st.spinner(
+                "جاري الاسترجاع..."
+            ):
+
                 result = drive_restore_latest()
+
             if result["success"]:
-                st.success("✅ تم الاسترجاع: " + str(result.get("filename","latest backup")))
+
+                st.success(
+                    "✓ تم استرجاع النسخة."
+                )
+
                 st.rerun()
+
             else:
-                st.error("❌ فشل الاسترجاع:\n\n" + str(result["error"]))
+
+                st.error(
+                    "فشل الاسترجاع: "
+                    +
+                    str(
+                        result["error"]
+                    )
+                )
+
 
 # =========================================================
 # FOOTER
 # =========================================================
+
 st.markdown(
     """
-    <div class="footer">
-        ZERO Advertising Management System
+    <div style="
+        text-align:center;
+        color:#3f4b5e;
+        font-size:9px;
+        padding:35px 0 5px;
+        letter-spacing:1px;
+    ">
+        ZERO ADVERTISING
         <br>
-        <strong>PRINT • DESIGN • ADVERTISING</strong>
+        <span style="color:#a91425;">
+            PRINT • DESIGN • ADVERTISING
+        </span>
     </div>
     """,
     unsafe_allow_html=True
