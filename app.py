@@ -1557,20 +1557,16 @@ with st.sidebar:
         st.markdown(
             f"""
             <div class="brand-box">
-
                 <img
                     class="brand-logo"
                     src="data:image/jpeg;base64,{logo_b64}"
                 >
-
                 <div class="brand-name">
                     ZERO PLUS
                 </div>
-
                 <div class="brand-caption">
                     PRINT • DESIGN • ADVERTISING
                 </div>
-
             </div>
             """,
             unsafe_allow_html=True
@@ -1606,15 +1602,12 @@ with st.sidebar:
         st.markdown(
             f"""
             <div class="note-card">
-
                 <div class="note-date">
                     📌 {date.today().isoformat()}
                 </div>
-
                 <div class="note-text">
                     {preview}
                 </div>
-
             </div>
             """,
             unsafe_allow_html=True
@@ -1632,17 +1625,13 @@ today_text = date.today().strftime(
 st.markdown(
     f"""
     <div class="hero">
-
         <div class="hero-line"></div>
-
         <div class="hero-title">
             ZERO Advertising
         </div>
-
         <div class="hero-sub">
             Management System&nbsp;&nbsp;•&nbsp;&nbsp;{today_text}
         </div>
-
     </div>
     """,
     unsafe_allow_html=True
@@ -1697,19 +1686,15 @@ for col, (icon, title, value) in zip(
         st.markdown(
             f"""
             <div class="stat-card">
-
                 <div class="stat-icon">
                     {icon}
                 </div>
-
                 <div class="stat-title">
                     {title}
                 </div>
-
                 <div class="stat-value">
                     {value}
                 </div>
-
             </div>
             """,
             unsafe_allow_html=True
@@ -1731,11 +1716,9 @@ if choice == "➕  تسجيل طلب جديد":
     st.markdown(
         """
         <div class="panel">
-
             <div class="panel-title">
                 تسجيل طلب جديد
             </div>
-
         </div>
         """,
         unsafe_allow_html=True
@@ -1835,15 +1818,12 @@ if choice == "➕  تسجيل طلب جديد":
                     <div class="panel"
                          style="margin:0;
                                 padding:13px 16px;">
-
                         <span>
                             المتبقي على العميل
                         </span>
-
                         <span class="remaining">
                             {remaining:,.2f} ج
                         </span>
-
                     </div>
                     """,
                     unsafe_allow_html=True
@@ -1976,11 +1956,9 @@ elif choice == "📋  الطلبات":
     st.markdown(
         """
         <div class="panel">
-
             <div class="panel-title">
                 الطلبات
             </div>
-
         </div>
         """,
         unsafe_allow_html=True
@@ -2103,64 +2081,48 @@ elif choice == "📋  الطلبات":
             rows_html += f"""
 
             <tr>
-
                 <td>
                     <span class="order-number">
                         #{int(row["order_id"])}
                     </span>
                 </td>
-
                 <td>
                     {name}
                 </td>
-
                 <td>
                     {phone}
                 </td>
-
                 <td>
                     {details}
                 </td>
-
                 <td>
                     <span class="money">
                         {float(row["total_cost"] or 0):,.2f} ج
                     </span>
                 </td>
-
                 <td>
                     <span class="money">
                         {float(row["deposit"] or 0):,.2f} ج
                     </span>
                 </td>
-
                 <td>
                     {payment_html}
                 </td>
-
                 <td>
                     {status_html}
                 </td>
-
                 <td>
                     {row["order_date"]}
                 </td>
-
             </tr>
-
             """
 
         st.markdown(
             f"""
-
             <div class="zero-table-wrapper">
-
                 <table class="zero-table">
-
                     <thead>
-
                         <tr>
-
                             <th>الطلب</th>
                             <th>العميل</th>
                             <th>التليفون</th>
@@ -2170,21 +2132,13 @@ elif choice == "📋  الطلبات":
                             <th>حالة الدفع</th>
                             <th>الحالة</th>
                             <th>التاريخ</th>
-
                         </tr>
-
                     </thead>
-
                     <tbody>
-
                         {rows_html}
-
                     </tbody>
-
                 </table>
-
             </div>
-
             """,
             unsafe_allow_html=True
         )
@@ -2203,11 +2157,9 @@ elif choice == "⚙️  تحديث طلب":
     st.markdown(
         """
         <div class="panel">
-
             <div class="panel-title">
                 تحديث الطلب
             </div>
-
         </div>
         """,
         unsafe_allow_html=True
@@ -2292,11 +2244,9 @@ elif choice == "⚙️  تحديث طلب":
             st.markdown(
                 """
                 <div class="panel">
-
                     <div class="panel-title">
                         💰 الحساب
                     </div>
-
                 </div>
                 """,
                 unsafe_allow_html=True
@@ -2340,15 +2290,12 @@ elif choice == "⚙️  تحديث طلب":
                     <div class="panel"
                          style="padding:14px;
                                 margin-top:10px;">
-
                         <span>
                             المتبقي
                         </span>
-
                         <span class="remaining">
                             {remaining:,.2f} ج
                         </span>
-
                     </div>
                     """,
                     unsafe_allow_html=True
@@ -2365,11 +2312,9 @@ elif choice == "⚙️  تحديث طلب":
             st.markdown(
                 """
                 <div class="panel">
-
                     <div class="panel-title">
                         📦 التنفيذ
                     </div>
-
                 </div>
                 """,
                 unsafe_allow_html=True
@@ -2466,11 +2411,9 @@ elif choice == "📝  المفكرة":
     st.markdown(
         """
         <div class="panel">
-
             <div class="panel-title">
                 المفكرة اليومية
             </div>
-
         </div>
         """,
         unsafe_allow_html=True
@@ -2528,15 +2471,12 @@ elif choice == "📝  المفكرة":
             st.markdown(
                 f"""
                 <div class="note-card">
-
                     <div class="note-date">
                         📅 {row["note_date"]}
                     </div>
-
                     <div class="note-text">
                         {row["note_text"]}
                     </div>
-
                 </div>
                 """,
                 unsafe_allow_html=True
@@ -2552,11 +2492,9 @@ elif choice == "☁️  Google Drive":
     st.markdown(
         """
         <div class="panel">
-
             <div class="panel-title">
                 ☁️ Google Drive
             </div>
-
         </div>
         """,
         unsafe_allow_html=True
