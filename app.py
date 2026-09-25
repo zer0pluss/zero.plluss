@@ -319,7 +319,7 @@ def set_custom_design():
             background-repeat: no-repeat;
             background-position: 20% 30%;
             background-size: min(1000px, 65vw);
-            opacity: 0.06;
+            opacity: 0.077;
             filter: none;
             pointer-events: none;
             z-index: 0;
@@ -330,41 +330,20 @@ def set_custom_design():
         f"""
 <style>
 
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Tajawal:wght@400;500;700&display=swap');
-
 /* =========================================================
    CORE
    ========================================================= */
-
-* {{
-    font-family: 'Cairo', 'Tajawal', -apple-system, sans-serif !important;
-}}
 
 html, body, [class*="css"] {{
     direction: rtl;
 }}
 
-:root {{
-    --gold: #f0b429;
-    --gold-soft: rgba(240,180,41,.14);
-    --red: #e2172c;
-    --red-2: #9c0e1f;
-    --green: #22c55e;
-    --green-soft: rgba(34,197,94,.14);
-    --ink: #eef2f7;
-    --muted: #7c8aa0;
-    --surface: rgba(15,23,38,.92);
-    --surface-2: rgba(10,16,27,.88);
-    --line: rgba(148,163,184,.14);
-}}
-
 .stApp {{
     background:
-        radial-gradient(circle at 12% 8%, rgba(226,23,44,.13), transparent 30%),
-        radial-gradient(circle at 90% 12%, rgba(240,180,41,.07), transparent 28%),
-        radial-gradient(circle at 85% 85%, rgba(55,75,110,.14), transparent 32%),
-        linear-gradient(150deg, #05080f 0%, #090f1c 45%, #05080f 100%);
-    color: var(--ink);
+        radial-gradient(circle at 15% 15%, rgba(226,27,43,.10), transparent 28%),
+        radial-gradient(circle at 85% 80%, rgba(55,75,110,.12), transparent 32%),
+        linear-gradient(135deg, #060a12 0%, #0a111d 48%, #060a12 100%);
+    color: #eef2f7;
 }}
 
 {background_css}
@@ -373,7 +352,7 @@ html, body, [class*="css"] {{
     position: relative;
     z-index: 1;
     max-width: 1550px;
-    padding-top: 1.1rem;
+    padding-top: 1.2rem;
     padding-bottom: 2.5rem;
 }}
 
@@ -386,34 +365,42 @@ header {{
     background: transparent !important;
 }}
 
-::-webkit-scrollbar {{
-    width: 10px;
-    height: 10px;
-}}
-::-webkit-scrollbar-track {{
-    background: transparent;
-}}
-::-webkit-scrollbar-thumb {{
-    background: linear-gradient(180deg, var(--red), var(--red-2));
-    border-radius: 10px;
-}}
-
 
 /* =========================================================
    ANIMATIONS
    ========================================================= */
 
 @keyframes fadeUp {{
-    from {{ opacity: 0; transform: translateY(16px); }}
-    to {{ opacity: 1; transform: translateY(0); }}
+    from {{
+        opacity: 0;
+        transform: translateY(18px);
+    }}
+    to {{
+        opacity: 1;
+        transform: translateY(0);
+    }}
 }}
 
-@keyframes glow {{
-    0%, 100% {{ box-shadow: 0 0 0 0 rgba(240,180,41,.18); }}
-    50% {{ box-shadow: 0 0 0 7px rgba(240,180,41,0); }}
+@keyframes pulseRed {{
+    0%, 100% {{
+        box-shadow: 0 0 0 0 rgba(226,27,43,.20);
+    }}
+    50% {{
+        box-shadow: 0 0 0 8px rgba(226,27,43,0);
+    }}
 }}
 
-.fade-up {{ animation: fadeUp .5s ease both; }}
+.fade-up {{
+    animation: fadeUp .55s ease both;
+}}
+
+.fade-up-2 {{
+    animation: fadeUp .70s ease both;
+}}
+
+.fade-up-3 {{
+    animation: fadeUp .85s ease both;
+}}
 
 
 /* =========================================================
@@ -421,9 +408,12 @@ header {{
    ========================================================= */
 
 section[data-testid="stSidebar"] {{
-    background: linear-gradient(180deg, #060a13 0%, #090e19 55%, #05080f 100%) !important;
-    border-left: 1px solid rgba(226,23,44,.55);
-    box-shadow: -18px 0 50px rgba(0,0,0,.4);
+    background:
+        linear-gradient(180deg, #070c15 0%, #0a101b 55%, #060a12 100%)
+        !important;
+    border-left: 1px solid rgba(226,27,43,.65);
+    box-shadow: -15px 0 45px rgba(0,0,0,.35);
+    overflow: hidden !important;
 }}
 
 section[data-testid="stSidebar"] > div {{
@@ -436,62 +426,56 @@ section[data-testid="stSidebar"] * {{
 
 .brand-box {{
     text-align: center;
-    padding: 10px 4px 18px;
+    padding: 8px 4px 16px;
 }}
 
 .brand-logo {{
-    width: 108px;
-    height: 108px;
+    width: 120px;
+    height: 120px;
     object-fit: cover;
-    border-radius: 20px;
-    border: 1px solid rgba(240,180,41,.35);
-    box-shadow: 0 18px 45px rgba(0,0,0,.5), 0 0 0 4px rgba(226,23,44,.08);
-    animation: fadeUp .55s ease both;
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,.13);
+    box-shadow: 0 18px 45px rgba(0,0,0,.45);
+    animation: fadeUp .6s ease both;
 }}
 
 .brand-name {{
-    font-size: 20px;
-    font-weight: 900;
-    margin-top: 12px;
-    letter-spacing: .5px;
-    background: linear-gradient(90deg, #ffffff, var(--gold));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    font-size: 21px;
+    font-weight: 800;
+    margin-top: 11px;
+    letter-spacing: .3px;
 }}
 
 .brand-caption {{
-    color: var(--muted) !important;
-    font-size: 10.5px;
-    margin-top: 3px;
-    letter-spacing: 1.5px;
+    color: #7f8da3 !important;
+    font-size: 11px;
+    margin-top: 2px;
 }}
 
 .side-label {{
-    color: #5e6c81 !important;
+    color: #69778b !important;
     font-size: 10px;
-    font-weight: 700;
-    margin: 15px 3px 8px;
-    letter-spacing: .6px;
+    margin: 13px 3px 7px;
+    letter-spacing: .4px;
 }}
 
 .side-note {{
-    background: linear-gradient(150deg, rgba(22,32,52,.95), rgba(8,13,23,.95));
-    border: 1px solid var(--line);
-    border-left: 3px solid var(--gold);
+    background: linear-gradient(145deg, rgba(20,30,48,.94), rgba(9,15,26,.94));
+    border: 1px solid rgba(148,163,184,.13);
     border-radius: 14px;
-    padding: 14px;
+    padding: 13px;
     margin-top: 12px;
 }}
 
 .side-note-title {{
     font-weight: 800;
-    font-size: 12.5px;
+    font-size: 13px;
     color: #f8fafc !important;
 }}
 
 .side-note-date {{
     font-size: 10px;
-    color: var(--muted) !important;
+    color: #7f8da3 !important;
     margin-top: 3px;
 }}
 
@@ -499,7 +483,7 @@ section[data-testid="stSidebar"] * {{
     margin-top: 8px;
     font-size: 11px;
     line-height: 1.8;
-    color: #aeb9c9 !important;
+    color: #b9c3d1 !important;
     white-space: pre-wrap;
 }}
 
@@ -509,11 +493,12 @@ section[data-testid="stSidebar"] * {{
    ========================================================= */
 
 .hero {{
-    background: linear-gradient(115deg, rgba(20,30,49,.94), rgba(7,12,22,.85));
-    border: 1px solid var(--line);
-    border-radius: 22px;
-    padding: 22px 26px;
-    margin-bottom: 20px;
+    background:
+        linear-gradient(110deg, rgba(18,28,45,.92), rgba(8,14,25,.82));
+    border: 1px solid rgba(148,163,184,.14);
+    border-radius: 20px;
+    padding: 20px 24px;
+    margin-bottom: 18px;
     position: relative;
     overflow: hidden;
     animation: fadeUp .45s ease both;
@@ -522,31 +507,26 @@ section[data-testid="stSidebar"] * {{
 .hero::after {{
     content: "";
     position: absolute;
-    top: 0; right: 0;
-    width: 4px; height: 100%;
-    background: linear-gradient(var(--gold), var(--red));
-    animation: glow 2.4s infinite;
-}}
-
-.hero-eyebrow {{
-    color: var(--gold);
-    font-size: 11px;
-    font-weight: 800;
-    letter-spacing: 2px;
-    margin-bottom: 4px;
+    top: 0;
+    right: 0;
+    width: 4px;
+    height: 100%;
+    background: linear-gradient(#ff2639, #a90e1e);
+    animation: pulseRed 2.2s infinite;
 }}
 
 .hero-title {{
-    font-size: 27px;
-    font-weight: 900;
+    font-size: 28px;
+    font-weight: 800;
     color: #ffffff;
-    line-height: 1.3;
+    line-height: 1.35;
+    word-break: break-word;
 }}
 
 .hero-sub {{
-    color: var(--muted);
+    color: #8492a6;
     font-size: 12px;
-    margin-top: 4px;
+    margin-top: 3px;
 }}
 
 
@@ -555,117 +535,85 @@ section[data-testid="stSidebar"] * {{
    ========================================================= */
 
 .stat-card {{
-    background: linear-gradient(150deg, rgba(21,32,52,.95), rgba(8,13,23,.92));
-    border: 1px solid var(--line);
-    border-radius: 18px;
+    background:
+        linear-gradient(145deg, rgba(20,31,50,.94), rgba(9,15,26,.92));
+    border: 1px solid rgba(148,163,184,.12);
+    border-radius: 17px;
     padding: 18px 19px;
-    min-height: 116px;
+    min-height: 118px;
     position: relative;
     overflow: hidden;
     transition: transform .25s ease, border-color .25s ease, box-shadow .25s ease;
-    animation: fadeUp .55s ease both;
+    animation: fadeUp .6s ease both;
 }}
 
 .stat-card:hover {{
     transform: translateY(-5px);
-    border-color: rgba(240,180,41,.4);
-    box-shadow: 0 18px 38px rgba(0,0,0,.32);
+    border-color: rgba(226,27,43,.42);
+    box-shadow: 0 16px 35px rgba(0,0,0,.28);
 }}
 
 .stat-card::before {{
     content: "";
     position: absolute;
-    top: 0; right: 0;
-    width: 3px; height: 100%;
-    background: var(--accent, var(--red));
+    top: 0;
+    right: 0;
+    width: 3px;
+    height: 100%;
+    background: #e21b2b;
 }}
 
 .stat-icon {{
-    width: 38px; height: 38px;
-    display: flex; align-items: center; justify-content: center;
-    border-radius: 11px;
-    font-size: 18px;
-    background: color-mix(in srgb, var(--accent, var(--red)) 16%, transparent);
-    border: 1px solid color-mix(in srgb, var(--accent, var(--red)) 40%, transparent);
+    font-size: 22px;
 }}
 
 .stat-title {{
-    color: var(--muted);
+    color: #78869a;
     font-size: 11px;
-    font-weight: 600;
-    margin-top: 10px;
+    margin-top: 5px;
 }}
 
 .stat-value {{
     color: #f8fafc;
-    font-size: 24px;
-    font-weight: 900;
-    margin-top: 2px;
+    font-size: 25px;
+    font-weight: 800;
+    margin-top: 1px;
 }}
 
 
 /* =========================================================
-   PANELS
+   CARDS
    ========================================================= */
 
 .panel {{
-    background: linear-gradient(150deg, rgba(18,28,46,.92), rgba(6,11,21,.88));
-    border: 1px solid var(--line);
-    border-radius: 20px;
+    background:
+        linear-gradient(145deg, rgba(17,28,46,.90), rgba(7,13,24,.86));
+    border: 1px solid rgba(148,163,184,.13);
+    border-radius: 19px;
     padding: 22px;
     margin-bottom: 18px;
-    box-shadow: 0 18px 50px rgba(0,0,0,.22);
-    animation: fadeUp .6s ease both;
+    box-shadow: 0 18px 50px rgba(0,0,0,.20);
+    animation: fadeUp .65s ease both;
 }}
 
 .panel-title {{
-    font-size: 19px;
-    font-weight: 900;
-    color: #f8fafc;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}}
-
-
-/* =========================================================
-   BADGES (payment / remaining)
-   ========================================================= */
-
-.badge-row {{
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 6px;
-}}
-
-.badge {{
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    padding: 10px 16px;
-    border-radius: 12px;
+    font-size: 20px;
     font-weight: 800;
-    font-size: 13.5px;
-    border: 1px solid transparent;
+    color: #f8fafc;
 }}
 
-.badge-remaining {{
-    background: linear-gradient(135deg, rgba(240,180,41,.20), rgba(240,180,41,.06));
-    border-color: rgba(240,180,41,.5);
-    color: var(--gold);
+.panel-sub {{
+    color: #69788d;
+    font-size: 11px;
+    margin-top: 2px;
+    margin-bottom: 18px;
 }}
 
-.badge-paid {{
-    background: linear-gradient(135deg, rgba(34,197,94,.20), rgba(34,197,94,.06));
-    border-color: rgba(34,197,94,.5);
-    color: #4ade80;
-}}
-
-.badge-warn {{
-    background: linear-gradient(135deg, rgba(226,23,44,.20), rgba(226,23,44,.06));
-    border-color: rgba(226,23,44,.5);
-    color: #f87171;
+.mini-title {{
+    color: #d8dee8;
+    font-size: 14px;
+    font-weight: 800;
+    margin-bottom: 9px;
 }}
 
 
@@ -676,17 +624,17 @@ section[data-testid="stSidebar"] * {{
 div[data-baseweb="input"] > div,
 div[data-baseweb="textarea"] > div,
 div[data-baseweb="select"] > div {{
-    background: #0c1526 !important;
-    border: 1px solid #24344c !important;
-    border-radius: 11px !important;
+    background: #0d1728 !important;
+    border: 1px solid #26364f !important;
+    border-radius: 10px !important;
     transition: border-color .2s ease, box-shadow .2s ease;
 }}
 
 div[data-baseweb="input"] > div:focus-within,
 div[data-baseweb="textarea"] > div:focus-within,
 div[data-baseweb="select"] > div:focus-within {{
-    border-color: rgba(240,180,41,.6) !important;
-    box-shadow: 0 0 0 3px rgba(240,180,41,.10);
+    border-color: rgba(226,27,43,.65) !important;
+    box-shadow: 0 0 0 3px rgba(226,27,43,.08);
 }}
 
 input, textarea {{
@@ -695,13 +643,13 @@ input, textarea {{
 
 input::placeholder,
 textarea::placeholder {{
-    color: #4c586c !important;
+    color: #536176 !important;
 }}
 
 label {{
     color: #cbd5e1 !important;
     font-size: 12px !important;
-    font-weight: 700 !important;
+    font-weight: 600 !important;
 }}
 
 
@@ -712,12 +660,11 @@ label {{
 .stButton > button,
 .stFormSubmitButton > button {{
     border: 0 !important;
-    border-radius: 11px !important;
-    min-height: 46px;
-    background: linear-gradient(135deg, #f5253b, #ad0f21) !important;
+    border-radius: 10px !important;
+    min-height: 44px;
+    background: linear-gradient(135deg, #f21f33, #bc1021) !important;
     color: #fff !important;
     font-weight: 800 !important;
-    letter-spacing: .2px;
     transition: transform .2s ease, box-shadow .2s ease, filter .2s ease;
 }}
 
@@ -725,7 +672,7 @@ label {{
 .stFormSubmitButton > button:hover {{
     transform: translateY(-2px);
     filter: brightness(1.08);
-    box-shadow: 0 14px 30px rgba(226,23,44,.3);
+    box-shadow: 0 12px 28px rgba(226,27,43,.28);
 }}
 
 
@@ -734,8 +681,8 @@ label {{
    ========================================================= */
 
 [data-testid="stDataFrame"] {{
-    border: 1px solid var(--line);
-    border-radius: 16px;
+    border: 1px solid rgba(148,163,184,.15);
+    border-radius: 14px;
     overflow: hidden;
 }}
 
@@ -745,7 +692,7 @@ label {{
    ========================================================= */
 
 div[data-testid="stAlert"] {{
-    border-radius: 12px;
+    border-radius: 11px;
 }}
 
 
@@ -764,16 +711,13 @@ hr {{
 
 .footer {{
     text-align: center;
-    color: #3d4759;
+    color: #465267;
     font-size: 10px;
-    padding: 22px 0 4px;
-    letter-spacing: .5px;
+    padding: 24px 0 4px;
 }}
 
 .footer strong {{
-    background: linear-gradient(90deg, var(--red), var(--gold));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    color: #e21b2b;
 }}
 
 
@@ -783,8 +727,13 @@ hr {{
 
 @media (max-width: 768px) {{
 
-    .hero-title {{ font-size: 19px; }}
-    .panel-title {{ font-size: 16px; }}
+    .hero-title {{
+        font-size: 20px;
+    }}
+
+    .panel-title {{
+        font-size: 17px;
+    }}
 
     div[data-testid="stHorizontalBlock"] {{
         flex-wrap: wrap !important;
@@ -797,8 +746,14 @@ hr {{
         width: 100% !important;
     }}
 
-    .stat-card {{ min-height: 92px; padding: 14px 15px; }}
-    .stat-value {{ font-size: 21px; }}
+    .stat-card {{
+        min-height: 95px;
+        padding: 14px 15px;
+    }}
+
+    .stat-value {{
+        font-size: 22px;
+    }}
 
     section[data-testid="stSidebar"][aria-expanded="false"] {{
         visibility: hidden;
@@ -821,37 +776,6 @@ def calculate_payment(total, deposit):
     if deposit > 0:
         return f"تم دفع عربون — المتبقي: {total - deposit:,.2f} ج"
     return "لم يدفع"
-
-
-def payment_status_short(total, deposit):
-    """Short status label (remaining amount is shown separately, highlighted)."""
-    if total > 0 and deposit >= total:
-        return "مدفوع بالكامل"
-    if deposit > 0:
-        return "عربون مدفوع"
-    return "لم يُدفع"
-
-
-def render_payment_badge(total, deposit):
-    """Render a clearly highlighted remaining-balance badge."""
-    remaining = total - deposit
-    if total > 0 and deposit >= total:
-        st.markdown(
-            '<div class="badge-row"><span class="badge badge-paid">✅ مدفوع بالكامل</span></div>',
-            unsafe_allow_html=True,
-        )
-    elif remaining > 0 and total > 0:
-        st.markdown(
-            f"""<div class="badge-row">
-                <span class="badge badge-remaining">المتبقي: {remaining:,.2f} ج</span>
-            </div>""",
-            unsafe_allow_html=True,
-        )
-    elif total > 0:
-        st.markdown(
-            '<div class="badge-row"><span class="badge badge-warn">لم يُدفع</span></div>',
-            unsafe_allow_html=True,
-        )
 
 
 def get_statistics():
@@ -982,7 +906,7 @@ with st.sidebar:
         st.markdown(
             f"""
             <div class="side-note">
-                <div class="side-note-title">📌 ملاحظة اليوم</div>
+                <div class="side-note-title">📌 Today note</div>
                 <div class="side-note-date">
                     {date.today().strftime("%Y-%m-%d")}
                 </div>
@@ -995,7 +919,10 @@ with st.sidebar:
         st.markdown(
             """
             <div class="side-note">
-                <div class="side-note-title">📌 لا توجد ملاحظات</div>
+                <div class="side-note-title">📌 مفيش ملاحظات</div>
+                <div class="side-note-date">
+                    اكتب ملاحظة من قسم المفكرة اليومية
+                </div>
             </div>
             """,
             unsafe_allow_html=True
@@ -1009,9 +936,13 @@ today_text = date.today().strftime("%Y-%m-%d")
 st.markdown(
     f"""
     <div class="hero">
-        <div class="hero-eyebrow">ZERO PLUS</div>
-        <div class="hero-title">نظام إدارة الطلبات</div>
-        <div class="hero-sub">{today_text}</div>
+        <div style="display:flex;justify-content:space-between;
+                    align-items:center;gap:20px;direction:ltr">
+            <div>
+                <div class="hero-title">ZERO Advertising | Management System</div>
+                <div class="hero-sub">{today_text}</div>
+            </div>
+        </div>
     </div>
     """,
     unsafe_allow_html=True
@@ -1025,17 +956,17 @@ total_orders, completed, in_progress, total_sales = get_statistics()
 c1, c2, c3, c4 = st.columns(4)
 
 stats = [
-    ("📦", "إجمالي الطلبات", total_orders, "#5b8def"),
-    ("🚀", "قيد التنفيذ", in_progress, "#f0b429"),
-    ("✅", "تم التسليم", completed, "#22c55e"),
-    ("💰", "إجمالي القيمة", f"{total_sales:,.0f} ج", "#e2172c"),
+    ("📦", "إجمالي الطلبات", total_orders),
+    ("🚀", "طلبات قيد التنفيذ", in_progress),
+    ("✅", "تم التسليم", completed),
+    ("💰", "إجمالي قيمة الطلبات", f"{total_sales:,.0f} ج"),
 ]
 
-for col, (icon, title, value, accent) in zip([c1, c2, c3, c4], stats):
+for col, (icon, title, value) in zip([c1, c2, c3, c4], stats):
     with col:
         st.markdown(
             f"""
-            <div class="stat-card" style="--accent:{accent}">
+            <div class="stat-card">
                 <div class="stat-icon">{icon}</div>
                 <div class="stat-title">{title}</div>
                 <div class="stat-value">{value}</div>
@@ -1055,6 +986,9 @@ if choice == "➕  تسجيل طلب جديد":
         """
         <div class="panel">
             <div class="panel-title">📝 تسجيل طلب جديد</div>
+            <div class="panel-sub">
+                أضف بيانات العميل والطلب والتكلفة وحالة التنفيذ.
+            </div>
         </div>
         """,
         unsafe_allow_html=True
@@ -1080,7 +1014,7 @@ if choice == "➕  تسجيل طلب جديد":
 
             order_details = st.text_area(
                 "تفاصيل الطلب *",
-                placeholder="500 فلاير — مقاس A5 — وجهين — ألوان...",
+                placeholder="مثال: 500 فلاير — مقاس A5 — وجهين — ألوان...",
                 height=155
             )
 
@@ -1089,19 +1023,14 @@ if choice == "➕  تسجيل طلب جديد":
             total_cost = st.number_input(
                 "التكلفة الإجمالية (جنيه)",
                 min_value=0.0,
-                value=None,
-                step=25.0,
-                format="%.0f",
-                placeholder="0"
+                step=0.0,
+                format="%.0f"
             )
 
             deposit = st.number_input(
                 "المبلغ المدفوع / العربون",
                 min_value=0.0,
-                value=None,
-                step=25.0,
-                format="%.0f",
-                placeholder="0"
+                step=0.0,
             )
 
             order_status = st.selectbox(
@@ -1109,19 +1038,17 @@ if choice == "➕  تسجيل طلب جديد":
                 ["قيد التنفيذ", "جاهز للتسليم", "تم التسليم"]
             )
 
-        total_cost = total_cost if total_cost is not None else 0.0
-        deposit = deposit if deposit is not None else 0.0
-
         st.divider()
 
         if total_cost > 0:
+            remaining = total_cost - deposit
+
             if deposit > total_cost:
-                st.markdown(
-                    '<div class="badge-row"><span class="badge badge-warn">⚠️ العربون أكبر من الإجمالي</span></div>',
-                    unsafe_allow_html=True
-                )
+                st.warning("⚠️ العربون أكبر من إجمالي قيمة الطلب.")
+            elif remaining > 0:
+                st.info(f"💳 المتبقي على العميل: {remaining:,.2f} جنيه")
             else:
-                render_payment_badge(total_cost, deposit)
+                st.success("✅ تم دفع قيمة الطلب بالكامل.")
 
         save = st.form_submit_button(
             "💾  حفظ الطلب",
@@ -1131,13 +1058,13 @@ if choice == "➕  تسجيل طلب جديد":
         if save:
 
             if not customer_name.strip():
-                st.error("اكتب اسم العميل.")
+                st.error("❌ اكتب اسم العميل.")
 
             elif not order_details.strip():
-                st.error("اكتب تفاصيل الطلب.")
+                st.error("❌ اكتب تفاصيل الطلب.")
 
             elif deposit > total_cost and total_cost > 0:
-                st.error("العربون لا يمكن أن يكون أكبر من إجمالي الطلب.")
+                st.error("❌ العربون لا يمكن أن يكون أكبر من إجمالي الطلب.")
 
             else:
 
@@ -1190,10 +1117,12 @@ if choice == "➕  تسجيل طلب جديد":
 
                 backup_result = backup_after_save()
 
-                st.success(f"تم حفظ طلب العميل «{customer_name}».")
+                st.success(
+                    f"✅ تم حفظ طلب العميل «{customer_name}» بنجاح."
+                )
                 if not backup_result["success"]:
                     st.warning(
-                        "الداتا اتحفظت، لكن حصلت مشكلة في المزامنة السحابية: "
+                        "⚠️ الداتا اتحفظت، لكن حصلت مشكلة في المزامنة السحابية: "
                         + str(backup_result["error"])
                     )
 
@@ -1206,6 +1135,9 @@ elif choice == "📋  عرض واستعلام الطلبات":
         """
         <div class="panel">
             <div class="panel-title">📋 الطلبات المسجلة</div>
+            <div class="panel-sub">
+                ابحث عن العملاء واستعرض جميع الطلبات والحسابات.
+            </div>
         </div>
         """,
         unsafe_allow_html=True
@@ -1222,7 +1154,7 @@ elif choice == "📋  عرض واستعلام الطلبات":
             o.order_details AS 'التفاصيل',
             o.total_cost AS 'الإجمالي',
             o.deposit AS 'العربون',
-            (o.total_cost - o.deposit) AS 'المتبقي',
+            o.payment_status AS 'حالة الدفع',
             o.order_status AS 'حالة الطلب',
             o.order_date AS 'تاريخ الطلب'
         FROM orders o
@@ -1236,7 +1168,7 @@ elif choice == "📋  عرض واستعلام الطلبات":
     conn.close()
 
     if df.empty:
-        st.info("لا توجد طلبات مسجلة حالياً.")
+        st.info("📭 لا توجد طلبات مسجلة حالياً.")
 
     else:
 
@@ -1271,30 +1203,19 @@ elif choice == "📋  عرض واستعلام الطلبات":
         if status_filter != "الكل":
             df = df[df["حالة الطلب"] == status_filter]
 
-        def _highlight_remaining(val):
-            try:
-                v = float(val)
-            except (TypeError, ValueError):
-                return ""
-            if v <= 0:
-                return "color:#4ade80; font-weight:800;"
-            return "color:#f0b429; font-weight:800;"
-
-        styled = (
-            df.style
-            .format({
-                "الإجمالي": "{:,.0f} ج",
-                "العربون": "{:,.0f} ج",
-                "المتبقي": "{:,.0f} ج",
-            })
-            .applymap(_highlight_remaining, subset=["المتبقي"])
-        )
-
         st.dataframe(
-            styled,
+            df,
             use_container_width=True,
             hide_index=True,
             height=520,
+            column_config={
+                "الإجمالي": st.column_config.NumberColumn(
+                    format="%.2f ج"
+                ),
+                "العربون": st.column_config.NumberColumn(
+                    format="%.2f ج"
+                ),
+            }
         )
 
         st.caption(f"عدد النتائج: {len(df)}")
@@ -1308,6 +1229,9 @@ elif choice == "⚙️  تحديث حالة طلب":
         """
         <div class="panel">
             <div class="panel-title">⚙️ تحديث حالة طلب</div>
+            <div class="panel-sub">
+                عدّل العربون وحالة التنفيذ وسيتم تحديث حالة الدفع تلقائياً.
+            </div>
         </div>
         """,
         unsafe_allow_html=True
@@ -1330,7 +1254,7 @@ elif choice == "⚙️  تحديث حالة طلب":
 
     if not orders:
 
-        st.info("لا توجد طلبات لتعديلها.")
+        st.info("📭 لا توجد طلبات لتعديلها.")
 
     else:
 
@@ -1375,32 +1299,31 @@ elif choice == "⚙️  تحديث حالة طلب":
             )
 
             total_cost = float(current[0] or 0)
-            current_deposit = float(current[1] or 0)
 
             new_deposit = st.number_input(
                 "المبلغ المدفوع",
                 min_value=0.0,
-                value=(None if current_deposit == 0 else current_deposit),
-                step=25.0,
-                format="%.0f",
-                placeholder="0"
+                value=float(current[1] or 0),
+                step=10.0
             )
-            new_deposit = new_deposit if new_deposit is not None else 0.0
 
             remaining = total_cost - new_deposit
 
             if new_deposit > total_cost and total_cost > 0:
-                st.markdown(
-                    '<div class="badge-row"><span class="badge badge-warn">⚠️ المبلغ أكبر من قيمة الطلب</span></div>',
-                    unsafe_allow_html=True
-                )
+                st.error("❌ المبلغ المدفوع أكبر من قيمة الطلب.")
                 new_payment_status = current[2]
             else:
                 new_payment_status = calculate_payment(
                     total_cost,
                     new_deposit
                 )
-                render_payment_badge(total_cost, new_deposit)
+
+                if remaining > 0:
+                    st.info(
+                        f"المتبقي: {remaining:,.2f} جنيه"
+                    )
+                elif total_cost > 0:
+                    st.success("✅ تم دفع الطلب بالكامل.")
 
         with col2:
 
@@ -1435,7 +1358,7 @@ elif choice == "⚙️  تحديث حالة طلب":
         ):
 
             if new_deposit > total_cost and total_cost > 0:
-                st.error("لا يمكن دفع مبلغ أكبر من قيمة الطلب.")
+                st.error("❌ لا يمكن دفع مبلغ أكبر من قيمة الطلب.")
 
             else:
 
@@ -1461,10 +1384,10 @@ elif choice == "⚙️  تحديث حالة طلب":
 
                 backup_result = backup_after_save()
 
-                st.success("تم تحديث الطلب.")
+                st.success("✅ تم تحديث الطلب بنجاح.")
                 if not backup_result["success"]:
                     st.warning(
-                        "التحديث اتحفظ، لكن حصلت مشكلة في المزامنة السحابية: "
+                        "⚠️ التحديث اتحفظ، لكن حصلت مشكلة في المزامنة السحابية: "
                         + str(backup_result["error"])
                     )
                 st.rerun()
@@ -1476,6 +1399,19 @@ elif choice == "⚙️  تحديث حالة طلب":
 # =========================================================
 elif choice == "📝  المفكرة اليومية":
 
+    st.markdown(
+        """
+        <div class="panel">
+            <div class="panel-title">📝 المفكرة اليومية</div>
+            <div class="panel-sub">
+                اكتب أي ملاحظات أو مهام أو تعليمات خاصة بالمطبعة.
+                كل يوم له ملاحظة مستقلة بالتاريخ.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
     today = date.today()
     today_iso = today.isoformat()
 
@@ -1483,6 +1419,9 @@ elif choice == "📝  المفكرة اليومية":
         f"""
         <div class="panel">
             <div class="panel-title">📌 ملاحظة يوم {today_iso}</div>
+            <div class="panel-sub">
+                أي كلام تكتبه هنا يتم حفظه لهذا اليوم فقط ويمكن تعديله لاحقاً.
+            </div>
         </div>
         """,
         unsafe_allow_html=True
@@ -1494,7 +1433,13 @@ elif choice == "📝  المفكرة اليومية":
         "اكتب ملاحظتك هنا",
         value=current_note,
         height=260,
-        placeholder="اكتب مهامك أو ملاحظاتك لليوم..."
+        placeholder=(
+            "مثال:\n"
+            "• أحمد يستلم البانر الساعة 5\n"
+            "• مراجعة تصميم محل الملابس\n"
+            "• شراء خامة فينيل\n"
+            "• الاتصال بالعميل محمد..."
+        )
     )
 
     if st.button(
@@ -1505,10 +1450,12 @@ elif choice == "📝  المفكرة اليومية":
         save_today_note(note.strip())
         backup_result = backup_after_save()
 
-        st.success(f"تم حفظ ملاحظة يوم {today_iso}.")
+        st.success(
+            f"✅ تم حفظ ملاحظة يوم {today_iso}."
+        )
         if not backup_result["success"]:
             st.warning(
-                "الملاحظة اتحفظت، لكن حصلت مشكلة في المزامنة السحابية: "
+                "⚠️ الملاحظة اتحفظت، لكن حصلت مشكلة في المزامنة السحابية: "
                 + str(backup_result["error"])
             )
 
@@ -1524,6 +1471,9 @@ elif choice == "📝  المفكرة اليومية":
             """
             <div class="panel">
                 <div class="panel-title">🗓️ الملاحظات السابقة</div>
+                <div class="panel-sub">
+                    آخر 10 أيام تم تسجيل ملاحظات بها.
+                </div>
             </div>
             """,
             unsafe_allow_html=True
@@ -1544,14 +1494,17 @@ elif choice == "☁️  النسخ الاحتياطي (Google Drive)":
     st.markdown(
         """
         <div class="panel">
-            <div class="panel-title">☁️ حماية البيانات</div>
+            <div class="panel-title">☁️ حماية البيانات — Google Drive</div>
+            <div class="panel-sub">
+                بعد كل حفظ، نسخة مضغوطة من قاعدة البيانات تُرفع تلقائياً إلى مجلد ZERO BACKUPS في Google Drive.
+            </div>
         </div>
         """,
         unsafe_allow_html=True
     )
 
     if not drive_backup_configured():
-        st.error("النسخ الاحتياطي غير مُهيأ.")
+        st.error("❌ النسخ الاحتياطي غير مُهيأ.")
         st.markdown("### ⚙️ الإعداد لأول مرة")
         st.markdown(
             """
@@ -1563,39 +1516,40 @@ elif choice == "☁️  النسخ الاحتياطي (Google Drive)":
             6) ضعه في Streamlit Secrets مع السر الموجود في Apps Script.
             """
         )
+        st.info("لا تحتاج Google Cloud Project أو Service Account أو Drive API.")
     else:
-        st.success("Google Drive Backup متصل.")
+        st.success("✅ Google Drive Backup متصل.")
 
         db_file = FilePath(DB_NAME)
         if db_file.exists():
             db_size = db_file.stat().st_size / 1024
-            st.info(f"📦 `{DB_NAME}` — {db_size:.1f} KB")
+            st.info(f"📦 قاعدة البيانات الحالية: `{DB_NAME}` — الحجم: {db_size:.1f} KB")
 
         remote = drive_backup_info()
         if remote and remote.get("found"):
-            st.success("☁️ آخر نسخة: " + str(remote.get("filename", "غير معروف")))
+            st.success("☁️ آخر نسخة: " + str(remote.get("filename","غير معروف")))
         else:
-            st.info("لا توجد نسخة احتياطية على Google Drive حتى الآن.")
+            st.info("📭 لا توجد نسخة احتياطية على Google Drive حتى الآن.")
 
         if st.button("☁️ عمل Backup الآن", use_container_width=True):
-            with st.spinner("جاري رفع النسخة..."):
+            with st.spinner("⏳ جاري رفع النسخة..."):
                 result = drive_backup_db()
             if result["success"]:
-                st.success("تم رفع النسخة بنجاح إلى Google Drive.")
+                st.success("✅ تم رفع النسخة بنجاح إلى Google Drive.")
             else:
-                st.error("فشل النسخ الاحتياطي:\n\n" + str(result["error"]))
+                st.error("❌ فشل النسخ الاحتياطي:\n\n" + str(result["error"]))
 
         st.markdown("<br>", unsafe_allow_html=True)
-        st.warning("⚠️ الاسترجاع سيستبدل قاعدة البيانات الحالية بآخر Backup على Google Drive.")
+        st.warning("⚠️ الاسترجاع سيستبدل قاعدة البيانات الحالية بآخر Backup موجود على Google Drive.")
 
         if st.button("🔄 استرجاع آخر Backup", use_container_width=True):
-            with st.spinner("جاري تنزيل وفحص النسخة..."):
+            with st.spinner("⏳ جاري تنزيل وفحص النسخة..."):
                 result = drive_restore_latest()
             if result["success"]:
-                st.success("تم الاسترجاع: " + str(result.get("filename", "latest backup")))
+                st.success("✅ تم الاسترجاع: " + str(result.get("filename","latest backup")))
                 st.rerun()
             else:
-                st.error("فشل الاسترجاع:\n\n" + str(result["error"]))
+                st.error("❌ فشل الاسترجاع:\n\n" + str(result["error"]))
 
 # =========================================================
 # FOOTER
