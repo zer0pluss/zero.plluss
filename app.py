@@ -135,7 +135,6 @@ def _json_response(response):
 
 
 def _db_to_excel_bytes():
-
     output = io.BytesIO()
 
     conn = sqlite3.connect(
@@ -144,28 +143,187 @@ def _db_to_excel_bytes():
     )
 
     try:
-
         with pd.ExcelWriter(
             output,
             engine="openpyxl"
         ) as writer:
 
-            for table in (
-                "customers",
-                "orders",
-                "daily_notes"
-            ):
+            # =====================================================
+            # CUSTOMERS
+            # =====================================================
+            customers_df = pd.read_sql_query(
+                """
+                SELECT
+                    customer_id,
+                    name,
+                    phone
+                FROM customers
+                ORDER BY customer_id
+                """,
+                conn
+            )
 
-                df = pd.read_sql_query(
-                    f"SELECT * FROM {table}",
-                    conn
+            customers_df.to_excel(
+                writer,
+                sheet_name="customers",
+                index=False
+            )
+
+            # =====================================================
+            # ORDERS
+            # Show customer name instead of customer_id.
+            # Keep all data needed by the shop in one readable sheet.
+            # =====================================================
+            orders_df = pd.read_sql_query(
+                """
+                SELECT
+                    o.order_id AS order_id,
+                    c.name AS customer_name,
+                    c.phone AS phone,
+                    o.order_details AS details,
+                    o.total_cost AS total_cost,
+                    o.deposit AS deposit,
+                    o.payment_status AS payment_status,
+                    o.order_status AS order_status,
+                    o.order_date AS order_date
+                FROM orders o
+                LEFT JOIN customers c
+                    ON o.customer_id = c.customer_id
+                ORDER BY o.order_id DESC
+                """,
+                conn
+            )
+
+            def format_payment_status(row):
+                total = float(row["total_cost"] or 0)
+                deposit = float(row["deposit"] or 0)
+
+                if total > 0 and deposit >= total:
+                    return "تم الدفع بالكامل"
+
+                if deposit > 0:
+                    remaining = total - deposit
+                    return f"المتبقي: {remaining:,.2f} ج"
+
+                return "لم يدفع"
+
+            if not orders_df.empty:
+                orders_df["payment_status"] = orders_df.apply(
+                    format_payment_status,
+                    axis=1
                 )
 
-                df.to_excel(
-                    writer,
-                    sheet_name=table,
-                    index=False
-                )
+            orders_df.to_excel(
+                writer,
+                sheet_name="orders",
+                index=False
+            )
+
+            # =====================================================
+            # DAILY NOTES
+            # =====================================================
+            notes_df = pd.read_sql_query(
+                """
+                SELECT *
+                FROM daily_notes
+                ORDER BY note_date DESC
+                """,
+                conn
+            )
+
+            notes_df.to_excel(
+                writer,
+                sheet_name="daily_notes",
+                index=False
+            )
+
+            # =====================================================
+            # EXCEL DESIGN
+            # =====================================================
+            workbook = writer.book
+
+            # Keep the normal readable style for all sheets.
+            for sheet_name in workbook.sheetnames:
+                ws = workbook[sheet_name]
+
+                ws.freeze_panes = "A2"
+                ws.auto_filter.ref = ws.dimensions
+
+                for cell in ws[1]:
+                    cell.font = cell.font.copy(
+                        bold=True
+                    )
+
+                for column_cells in ws.columns:
+                    max_length = 0
+                    column_letter = column_cells[0].column_letter
+
+                    for cell in column_cells:
+                        value = "" if cell.value is None else str(cell.value)
+                        max_length = max(
+                            max_length,
+                            len(value)
+                        )
+
+                    ws.column_dimensions[column_letter].width = min(
+                        max(max_length + 2, 12),
+                        45
+                    )
+
+            # =====================================================
+            # PAYMENT STATUS COLORS
+            # =====================================================
+            orders_ws = workbook["orders"]
+
+            payment_col = None
+
+            for cell in orders_ws[1]:
+                if cell.value == "payment_status":
+                    payment_col = cell.column
+                    break
+
+            if payment_col is not None:
+                from openpyxl.styles import Font, PatternFill
+
+                for row in range(2, orders_ws.max_row + 1):
+                    cell = orders_ws.cell(
+                        row=row,
+                        column=payment_col
+                    )
+
+                    value = str(cell.value or "")
+
+                    if value.startswith("المتبقي:"):
+                        # The remaining amount is highlighted
+                        # inside the same payment_status cell.
+                        cell.font = Font(
+                            bold=True,
+                            color="C00000"
+                        )
+                        cell.fill = PatternFill(
+                            fill_type="solid",
+                            fgColor="FCE4D6"
+                        )
+
+                    elif value == "تم الدفع بالكامل":
+                        cell.font = Font(
+                            bold=True,
+                            color="008000"
+                        )
+                        cell.fill = PatternFill(
+                            fill_type="solid",
+                            fgColor="E2F0D9"
+                        )
+
+                    elif value == "لم يدفع":
+                        cell.font = Font(
+                            bold=True,
+                            color="BF7F00"
+                        )
+                        cell.fill = PatternFill(
+                            fill_type="solid",
+                            fgColor="FFF2CC"
+                        )
 
     finally:
         conn.close()
@@ -177,7 +335,6 @@ def _excel_bytes_to_db(
     excel_bytes,
     target_path
 ):
-
     xls = pd.ExcelFile(
         io.BytesIO(excel_bytes),
         engine="openpyxl"
@@ -207,7 +364,6 @@ def _excel_bytes_to_db(
     )
 
     try:
-
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -242,49 +398,193 @@ def _excel_bytes_to_db(
             )
         """)
 
-        for table in (
-            "customers",
-            "orders",
-            "daily_notes"
-        ):
+        # =====================================================
+        # CUSTOMERS
+        # =====================================================
+        customers_df = pd.read_excel(
+            xls,
+            sheet_name="customers",
+            engine="openpyxl"
+        )
 
-            df = pd.read_excel(
-                xls,
-                sheet_name=table,
-                engine="openpyxl"
+        customers_df = customers_df.where(
+            pd.notna(customers_df),
+            None
+        )
+
+        if not customers_df.empty:
+            columns = list(customers_df.columns)
+
+            placeholders = ",".join(
+                ["?"] * len(columns)
             )
 
-            df = df.where(
-                pd.notna(df),
-                None
-            )
+            sql = f"""
+                INSERT INTO customers
+                ({','.join(columns)})
+                VALUES ({placeholders})
+            """
 
-            if not df.empty:
-
-                columns = list(df.columns)
-
-                placeholders = ",".join(
-                    ["?"] * len(columns)
+            rows = [
+                tuple(row)
+                for row in customers_df.itertuples(
+                    index=False,
+                    name=None
                 )
+            ]
 
-                sql = f"""
-                    INSERT INTO {table}
-                    ({','.join(columns)})
-                    VALUES ({placeholders})
+            cursor.executemany(
+                sql,
+                rows
+            )
+
+        # =====================================================
+        # ORDERS
+        # The Excel sheet contains customer_name instead of
+        # customer_id. Convert the name back to customer_id
+        # during restore so the existing database stays unchanged.
+        # =====================================================
+        orders_df = pd.read_excel(
+            xls,
+            sheet_name="orders",
+            engine="openpyxl"
+        )
+
+        orders_df = orders_df.where(
+            pd.notna(orders_df),
+            None
+        )
+
+        if not orders_df.empty:
+            customer_map = {}
+
+            customer_rows = cursor.execute(
                 """
+                SELECT customer_id, name
+                FROM customers
+                """
+            ).fetchall()
 
-                rows = [
-                    tuple(row)
-                    for row in df.itertuples(
-                        index=False,
-                        name=None
-                    )
-                ]
+            for customer_id, name in customer_rows:
+                customer_map[str(name).strip()] = customer_id
 
-                cursor.executemany(
-                    sql,
-                    rows
+            for _, row in orders_df.iterrows():
+                customer_name = str(
+                    row.get("customer_name") or ""
+                ).strip()
+
+                customer_id = customer_map.get(
+                    customer_name
                 )
+
+                if customer_id is None:
+                    raise ValueError(
+                        f"العميل «{customer_name}» غير موجود في شيت customers."
+                    )
+
+                total_cost = float(
+                    row.get("total_cost") or 0
+                )
+
+                deposit = float(
+                    row.get("deposit") or 0
+                )
+
+                payment_status = row.get(
+                    "payment_status"
+                )
+
+                if (
+                    payment_status is None
+                    or str(payment_status).strip() == ""
+                ):
+                    payment_status = calculate_payment(
+                        total_cost,
+                        deposit
+                    )
+                else:
+                    payment_status = str(
+                        payment_status
+                    )
+
+                    # Convert the readable Excel value back
+                    # to the database's existing format.
+                    if payment_status.startswith("المتبقي:"):
+                        remaining = total_cost - deposit
+                        payment_status = (
+                            f"تم دفع عربون|{remaining}"
+                        )
+                    elif payment_status == "تم الدفع بالكامل":
+                        payment_status = "تم الدفع بالكامل"
+                    elif payment_status == "لم يدفع":
+                        payment_status = "لم يدفع"
+
+                cursor.execute(
+                    """
+                    INSERT INTO orders
+                    (
+                        order_id,
+                        customer_id,
+                        order_details,
+                        order_date,
+                        total_cost,
+                        deposit,
+                        payment_status,
+                        order_status
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        int(row.get("order_id") or 0),
+                        customer_id,
+                        str(row.get("details") or ""),
+                        row.get("order_date"),
+                        total_cost,
+                        deposit,
+                        payment_status,
+                        str(row.get("order_status") or "قيد التنفيذ")
+                    )
+                )
+
+        # =====================================================
+        # DAILY NOTES
+        # =====================================================
+        notes_df = pd.read_excel(
+            xls,
+            sheet_name="daily_notes",
+            engine="openpyxl"
+        )
+
+        notes_df = notes_df.where(
+            pd.notna(notes_df),
+            None
+        )
+
+        if not notes_df.empty:
+            columns = list(notes_df.columns)
+
+            placeholders = ",".join(
+                ["?"] * len(columns)
+            )
+
+            sql = f"""
+                INSERT INTO daily_notes
+                ({','.join(columns)})
+                VALUES ({placeholders})
+            """
+
+            rows = [
+                tuple(row)
+                for row in notes_df.itertuples(
+                    index=False,
+                    name=None
+                )
+            ]
+
+            cursor.executemany(
+                sql,
+                rows
+            )
 
         conn.commit()
 
@@ -299,7 +599,6 @@ def _excel_bytes_to_db(
 
     finally:
         conn.close()
-
 
 def drive_backup_db():
 
